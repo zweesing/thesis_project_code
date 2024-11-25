@@ -1,0 +1,129 @@
+import matplotlib.pyplot as plt
+import argparse
+import numpy as np
+
+# read in matrix file and plot elements of the matrix for a specific wavelength as a function of angle
+
+
+def read_matrix(muellerfile):
+    """read in a mueller matrix file and output as array of matrices, for each angle
+
+    Args:
+        muellerfile (file): file containing the mueler matrix
+
+    """
+    # for adda:
+
+    # read in file. 17 columns
+    file = open(muellerfile, "r")
+    columnnames = file.readline().split()
+    # file always has 361 lines: a header and 360 angles
+    thetas = np.arange(181)
+
+    # saving the matrices in an array containing all the 4x4 matrices
+    matrices = np.zeros((181, 4, 4))
+
+    line = file.readline()
+    while line:
+        line_split = line.split()
+        # this is the angle but it also works as an index
+        i = int(float(line_split[0]))
+
+        # remove the angle
+        line_split.pop(0)
+        # make numbers. this is not actually necessary
+        elements = [float(el) for el in line_split]
+        # reshape and save the matrix
+        matrix = np.array(elements).reshape((4, 4))
+        matrices[i] = matrix
+
+        line = file.readline()
+
+    file.close()
+
+    return thetas, matrices
+
+
+def read_matrix_optool(dustkapscatmatfile):
+    # optool outputs everything on one file, so need to isolate the matrix first
+    file = open(dustkapscatmatfile, "r")
+
+    line = file.readline()
+
+    # comments
+    while line.startswith("#"):
+        line = file.readline()
+
+    # the way the file is written, there will be 3 white lines before the matrix
+    white_counter = 0
+    while white_counter < 3 and line:
+        print("white spacing")
+        if line == "\n":
+            white_counter += 1
+        line = file.readline()
+
+    # optool only does 180 angles
+    matrices = np.zeros((180, 4, 4))
+
+    # ANGLE counter
+    i = 0
+    while line:
+
+        matrix = np.zeros((4, 4))
+        line_split = line.split()
+
+        # fill in the six elements I have
+        elements = [float(el) for el in line_split]
+        matrix[0, 0] = elements[0]  # F11
+        matrix[0, 1] = elements[1]  # F12
+        matrix[1, 1] = elements[2]  # F22
+        matrix[2, 2] = elements[3]  # F33
+        matrix[2, 3] = elements[4]  # F34
+        matrix[3, 3] = elements[5]  # F44
+
+        # TODO fill in symmetry
+
+        # save the same way
+        matrices[i] = matrix
+
+        i += 1
+        line = file.readline()
+
+    file.close()
+    # THIS IS NOT CORRECT the angles should be read from file becasue they are different.
+    thetas = np.arange(0.5, 180, 1)
+
+    return thetas, matrices
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("muellerfile", help="mueller matrix file")
+    parser.add_argument("element", help="element of the matrix to plot, like 12 or 33")
+    args = parser.parse_args()
+
+    # only works if the element argument is two numbers and no spaces
+    element = [int(el) for el in list(args.element)]
+
+    # optool file
+    if args.muellerfile.endswith(".dat"):
+        thetas, matrices = read_matrix_optool(args.muellerfile)
+    # adda file
+    else:
+        thetas, matrices = read_matrix(args.muellerfile)
+    print(thetas)
+    # array of chosen matrix elements
+    element_arr = matrices[:, element[0] - 1, element[1] - 1]
+
+    fig = plt.figure()
+    plt.plot(thetas, element_arr)
+
+    if args.muellerfile.endswith(".dat"):
+        plt.title(f"optool mueller matrix element s{element[0]}{element[1]}")
+    else:
+        plt.title(f"adda mueller matrix element s{element[0]}{element[1]}")
+
+    plt.xlabel("theta (degrees)")
+    plt.ylabel(f"s{element[0]}{element[1]}")
+    plt.xlim(0, 180)
+    plt.show()
