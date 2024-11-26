@@ -55,7 +55,6 @@ def read_matrix(muellerfile, norm=True):
             Cexts = float(lines[0].split()[-1])
             Cabs = float(lines[2].split()[-1])
             Csca = Cexts - Cabs
-            print("Csca = ", Csca)
 
         # read in lambda
         with open(logpath, "r") as f:
@@ -63,7 +62,6 @@ def read_matrix(muellerfile, norm=True):
                 line = f.readline()
 
             l = float(line.split()[-1])
-            print("l = ", l)
 
         # calculate normalisation factor
         norm_fact = l**2 / (np.pi * Csca)
