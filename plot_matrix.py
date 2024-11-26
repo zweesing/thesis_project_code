@@ -5,11 +5,12 @@ import numpy as np
 # read in matrix file and plot elements of the matrix for a specific wavelength as a function of angle
 
 
-def read_matrix(muellerfile):
-    """read in a mueller matrix file and output as array of matrices, for each angle
+def read_matrix(muellerfile, norm=True):
+    """read in a mueller matrix file and output as array of matrices, for each angle. normalises to Hovenier normalisation.
 
     Args:
         muellerfile (file): file containing the mueler matrix
+        norm (bool): normalise the matrix. defaults to True
 
     """
     # for adda:
@@ -41,6 +42,35 @@ def read_matrix(muellerfile):
 
     file.close()
 
+    # normalisation. assumes cross section and log file to be in the same folder
+    if norm:
+        # read in files
+        path = muellerfile.split("/")
+        crosssecpath = "/".join(path[:-1]) + "/CrossSec-Y"
+        logpath = "/".join(path[:-1]) + "/log"
+
+        # read cross section
+        with open(crosssecpath, "r") as f:
+            lines = f.readlines()
+            Cexts = float(lines[0].split()[-1])
+            Cabs = float(lines[2].split()[-1])
+            Csca = Cexts - Cabs
+            print("Csca = ", Csca)
+
+        # read in lambda
+        with open(logpath, "r") as f:
+            for _ in range(3):
+                line = f.readline()
+
+            l = float(line.split()[-1])
+            print("l = ", l)
+
+        # calculate normalisation factor
+        norm_fact = l**2 / (np.pi * Csca)
+
+        # normalise matrix
+        matrices[:, 1:] = matrices[:, 1:] * norm_fact
+
     return thetas, matrices
 
 
@@ -57,13 +87,18 @@ def read_matrix_optool(dustkapscatmatfile):
     # the way the file is written, there will be 3 white lines before the matrix
     white_counter = 0
     while white_counter < 3 and line:
-        print("white spacing")
         if line == "\n":
             white_counter += 1
         line = file.readline()
 
-    # optool only does 180 angles
-    matrices = np.zeros((180, 4, 4))
+    # saving the matrices in an array containing all the 4x4 matrices
+    if dustkapscatmatfile.endswith(".dat"):
+        # optool only does 180 angles
+        matrices = np.zeros((180, 4, 4))
+        thetas = np.arange(0.5, 180, 1)
+    else:
+        thetas = np.arange(181)
+        matrices = np.zeros((181, 4, 4))
 
     # ANGLE counter
     i = 0
@@ -90,8 +125,6 @@ def read_matrix_optool(dustkapscatmatfile):
         line = file.readline()
 
     file.close()
-    # THIS IS NOT CORRECT the angles should be read from file becasue they are different.
-    thetas = np.arange(0.5, 180, 1)
 
     return thetas, matrices
 
@@ -106,12 +139,12 @@ if __name__ == "__main__":
     element = [int(el) for el in list(args.element)]
 
     # optool file
-    if args.muellerfile.endswith(".dat"):
+    if args.muellerfile.endswith(".dat") or args.muellerfile.endswith(".inp"):
         thetas, matrices = read_matrix_optool(args.muellerfile)
     # adda file
     else:
         thetas, matrices = read_matrix(args.muellerfile)
-    print(thetas)
+
     # array of chosen matrix elements
     element_arr = matrices[:, element[0] - 1, element[1] - 1]
 
