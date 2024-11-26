@@ -20,13 +20,13 @@ def plot3d(arr):
 
 
 # number of points
-M = 5
+M = 4
 # size of particles
 rho = 1
 
 # construct random points
 Rijk = np.random.rand(M, 3)
-plot3d(Rijk)
+
 
 # distances to the center
 d = np.sqrt(
@@ -35,11 +35,14 @@ d = np.sqrt(
 
 # construct the field
 Gijk = Rijk * np.exp(-rho * d[:, None] ** 2)
-plot3d(Gijk)
-# we need to take the 3d fourier transform
-GijkF = np.fft.fftn(Gijk)
-# normalise
-GijkF = GijkF / GijkF.max()
 
-# all points where GijF is > 0.5 are inside the particle. this Is unclear because the fourier transform does not return single values per point, but 3 coordinates (complex).
-# I may not understand 3d fourier transforms
+# we need to take the 3d fourier transform. ( not sure how this function wants the input to look like and what axes to specify) (axes=[0,1] or [1,0] does not change anything)
+GijkF = np.fft.fftn(Gijk, axes=[0, 1])
+print(GijkF)
+print(" ")
+print(np.fft.fftn(Gijk))
+# normalise
+GijkF = GijkF / np.max(GijkF, 1)[:, None]
+
+# all points where GijF is > 0.5 are inside the particle. this Is unclear because the fourier transform does not return single value per point, but the transformed coordinates (complex).
+# do I take the length of the fourier transformed vector?

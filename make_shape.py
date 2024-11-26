@@ -5,7 +5,7 @@ import numpy as np
 shape_name = "my_coated_sphere"
 # we need to write a shape file that has a bunch of x y z coordinates inside a sphere
 # amount of points is determined by the box size
-rad = [5, 8]
+rad = [8, 4]
 Ndom = 2
 
 
@@ -51,11 +51,11 @@ def generate_coordinates(rad=8):
         r2 = rad[1]
         coordinates = [[], []]
     else:
-        r2 = rad
+        r1 = rad
         coordinates = []
 
     offset = (
-        -r2 + 0.5
+        -r1 + 0.5
     )  # this +0.5 puts the center on a halfpoint and makes the generation match addas method
 
     # this isnt entirely correct because negative edge points and positive edge points are treated differently.
@@ -73,7 +73,7 @@ def generate_coordinates(rad=8):
                         np.sqrt(
                             (x + offset) ** 2 + (y + offset) ** 2 + (z + offset) ** 2
                         )
-                        <= r1
+                        <= r2
                     ):
                         coordinate = f"{x} {y} {z}"
                         coordinates[0].append(coordinate)
@@ -82,7 +82,7 @@ def generate_coordinates(rad=8):
                         np.sqrt(
                             (x + offset) ** 2 + (y + offset) ** 2 + (z + offset) ** 2
                         )
-                        <= r2
+                        <= r1
                     ):
                         coordinate = f"{x} {y} {z}"
                         coordinates[1].append(coordinate)
@@ -92,7 +92,7 @@ def generate_coordinates(rad=8):
                         np.sqrt(
                             (x + offset) ** 2 + (y + offset) ** 2 + (z + offset) ** 2
                         )
-                        <= r2
+                        <= r1
                     ):
                         coordinate = f"{x} {y} {z}"
                         coordinates.append(coordinate)
