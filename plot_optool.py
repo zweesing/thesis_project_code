@@ -184,7 +184,7 @@ Q_optool = Cext_optool / (np.pi * a**2)  # unitless
 #     else:
 #         os.system(f'mkdir adda_runs{dir_counter}')
 #         no_dir = False
-os.system(f"mkdir {folder}/adda_runs")
+os.system(f"mkdir runs/{folder}/adda_runs")
 
 # run adda
 for i, lam in enumerate(lamarr):

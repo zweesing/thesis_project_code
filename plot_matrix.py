@@ -127,6 +127,12 @@ def read_matrix_optool(dustkapscatmatfile):
     return thetas, matrices
 
 
+# I need to write this matrix conversion shit. but idk how to do this well without restructuring my code a bunch.
+# so this is just gonna be filled with some placeholder stuff
+def convention_conversion(matrix, kappa_scat, mass, lam):
+    pass
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("muellerfile", help="mueller matrix file")

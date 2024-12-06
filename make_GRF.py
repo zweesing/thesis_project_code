@@ -29,12 +29,23 @@ def plot3d(arr):
     plt.show()
 
 
+def plot_slice(arr):
+
+    x, y = np.where(arr == 1)
+
+    fig = plt.figure()
+
+    plt.scatter(x, y)
+    plt.xlim(plt.ylim())
+    plt.show()
+
+
 # for testing
 # np.random.seed(10)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("M", help="number of points", default=40, type=int, nargs="?")
-parser.add_argument("rho", help="size", default=1, type=int, nargs="?")
+parser.add_argument("rho", help="size", default=1, type=float, nargs="?")
 args = parser.parse_args()
 
 # ---------------------------------------------------------------------------------- #
@@ -94,6 +105,12 @@ space[GijkF > threshold] = 1
 no_poros = deepcopy(space)
 print("done.")
 print(np.count_nonzero(space))
+
+# ---------------------------------------------------------------------------------- #
+# determine boundaries
+# ---------------------------------------------------------------------------------- #
+plot_slice(space[0])
+
 # ---------------------------------------------------------------------------------- #
 # we can add porosity
 # ---------------------------------------------------------------------------------- #
@@ -118,3 +135,13 @@ por_diff = no_poros - space  # this should leave 1 values where there is stuff r
 
 print(np.count_nonzero(por_diff))
 plot3d(space)
+
+# ---------------------------------------------------------------------------------- #
+# we can add a mantle
+# same idea as normal particle but theres another threshold such that the mantle
+# is 30% of the volume (at least thats how they do it)
+# ---------------------------------------------------------------------------------- #
+volume_particles = np.count_nonzero(space)
+# not sure how to do this, you'd have to run it to see how much the threshold should be maybe
+# unless i can find a way to understand what volume my parameters will produce. It would be too
+# time consuming to do it twice.
