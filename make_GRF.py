@@ -108,8 +108,25 @@ print(np.count_nonzero(space))
 
 # ---------------------------------------------------------------------------------- #
 # determine boundaries
+# can just do this with a neighbour search but its gonna be hard and long
 # ---------------------------------------------------------------------------------- #
 plot_slice(space[0])
+
+# pick a point. any point that is inside a particle.
+# check all eight neighbours. if any are outside the particle, add point to some list
+#  go to new point that is one of those neighbours and repeat
+
+# what does this give us? in the end, an entire outside boundary of the particle (potato peel)
+# this means we have the 6 bounds to extract it.
+
+# check the ouside of the extraction box for particle bits (ones) (jonas' idea).
+# if there is a point in here that is NOT in my potato peel, it is a slice of a different particle
+# we could then do another search to find the boundary of that particle to remove it? no idk
+# cris has an idea to do recursive boxes that get smaller and smaller until i only have the particle
+
+# could also just try neighbour searching for the entire thing.
+# recursively. picture of cris' pseudocode
+
 
 # ---------------------------------------------------------------------------------- #
 # we can add porosity
