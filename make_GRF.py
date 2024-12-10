@@ -5,9 +5,15 @@ import matplotlib.pyplot as plt
 import argparse
 import time
 import copy
+import sys
+
+# this is a little scary but my particles are getting bigger
+sys.setrecursionlimit(3500)
+
+test_folder = "test_images/"
 
 
-def plot3d(arr, title=None):
+def plot3d(arr, title=None, save=False):
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")
 
@@ -18,12 +24,12 @@ def plot3d(arr, title=None):
     # this has a good idea on how to make the plotting look nice i think. not implemented yet
 
     # Plot the points
-    ax.scatter(x, y, z, marker="s")
+    ax.scatter(x, y, z)
 
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
-    print(arr.shape)
+
     ax.set_xlim(0, arr.shape[0])
     ax.set_ylim(0, arr.shape[1])
     ax.set_zlim(0, arr.shape[2])
@@ -33,7 +39,10 @@ def plot3d(arr, title=None):
     if title:
         ax.set_title(title)
 
-    plt.show()
+    if save:
+        plt.savefig(f"{test_folder}{save}.png")
+    else:
+        plt.show()
 
 
 def plot_slice(arr):
@@ -58,7 +67,7 @@ args = parser.parse_args()
 # ---------------------------------------------------------------------------------- #
 # variables
 # ---------------------------------------------------------------------------------- #
-
+np.random.seed(0)
 # number of points
 M = args.M
 # size of particles
@@ -71,7 +80,7 @@ por_div = 50
 # porosity threshold
 por_threshold = 0.2
 # add porosity or not
-porosity = False
+porosity = True
 # ---------------------------------------------------------------------------------- #
 # ---------------------------------------------------------------------------------- #
 
@@ -111,8 +120,34 @@ space[GijkF > threshold] = 1
 
 no_poros = copy.copy(space)
 print("done.")
-print(np.count_nonzero(space))
+print("number of dipoles:", np.count_nonzero(space))
 
+plot3d(space, save="no_poros")
+# ---------------------------------------------------------------------------------- #
+# we can add porosity
+# ---------------------------------------------------------------------------------- #
+print("adding porosity...")
+if porosity:
+    # second GRF with smaller effective size
+    rho2 = rho / por_div
+
+    # construct the field
+    Gijk2 = Rijk * np.exp(-rho2 * d**2)
+    print("second fourier...")
+    GijkF2 = np.fft.fftn(Gijk2)
+    print("done with second fourier.")
+    GijkF2 = GijkF2 / np.max(GijkF2)
+
+    # we add vacuum back where gijkf2 is above the porosity threshold
+    space[GijkF2 > por_threshold] = 0
+
+    # see where the porosity got added.
+    por_diff = (
+        no_poros - space
+    )  # this should leave 1 values where there is stuff removed
+    print("dipoles removed with porosity:", np.count_nonzero(por_diff))
+
+    plot3d(space, save="poros_added")
 # ---------------------------------------------------------------------------------- #
 # extract the particles from here
 # ---------------------------------------------------------------------------------- #
@@ -197,36 +232,20 @@ while not particles_removed:
         particles_removed = True
 
 num_parts = len(particles)
-print("number of particles removed:", num_parts)
-plot3d(space_copy, title="(hopefully) empty space")
-plot3d(space, title=f"space with hopefully {num_parts} particles")
-
-# ---------------------------------------------------------------------------------- #
-# we can add porosity
-# ---------------------------------------------------------------------------------- #
-print("adding porosity...")
-if porosity:
-    # second GRF with smaller effective size
-    rho2 = rho / por_div
-
-    # construct the field
-    Gijk2 = Rijk * np.exp(-rho2 * d**2)
-    print("second fourier...")
-    GijkF2 = np.fft.fftn(Gijk2)
-    print("done with second fourier.")
-    GijkF2 = GijkF2 / np.max(GijkF2)
-
-    # we add vacuum back where gijkf2 is above the porosity threshold
-    space[GijkF2 > por_threshold] = 0
-
-    # see where the porosity got added.
-    por_diff = (
-        no_poros - space
-    )  # this should leave 1 values where there is stuff removed
+print("number of particles extracted:", num_parts)
+# plot3d(space_copy, title="(hopefully) empty space")
+# plot3d(space, title=f"space with hopefully {num_parts} particles")
+i = 1
+total_dipoles_particles = 0
+for particle in particles:
+    plot3d(particle, save=f"particle{i}")
+    i += 1
+    total_dipoles_particles += np.count_nonzero(particle)
 
 
-plot3d(space)
-
+print(
+    f"dipole sanity check: \n    total from extracted particles={total_dipoles_particles}\n    total from espace={np.count_nonzero(space)} "
+)
 # ---------------------------------------------------------------------------------- #
 # we can add a mantle
 # same idea as normal particle but theres another threshold such that the mantle
