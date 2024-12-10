@@ -166,7 +166,7 @@ if porosity:
 # cris has an idea to do recursive boxes that get smaller and smaller until i only have the particle
 
 # could also just try neighbour searching for the entire thing.
-# recursively. picture of cris' pseudocode
+# recursively. picture of cris' idea
 
 
 # this method should work after dealing with porosity
@@ -233,14 +233,50 @@ while not particles_removed:
 
 num_parts = len(particles)
 print("number of particles extracted:", num_parts)
-# plot3d(space_copy, title="(hopefully) empty space")
-# plot3d(space, title=f"space with hopefully {num_parts} particles")
+# ---------------------------------------------------------------------------------- #
+# saving the particles. I kinda only want to save the particles that make sense (not the corners)
+# ---------------------------------------------------------------------------------- #
+
+
+def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
+    # idk why im doing this so complicatedly
+    nofile = True
+    counter = 0
+    newfilename = filename
+
+    while nofile:
+        try:
+            file = open(f"{newfilename}.geom", "x")
+            nofile = False
+        except FileExistsError:
+            counter += 1
+            newfilename = filename + str(counter)
+
+    file.write("# some comments about the shape i made\n")
+    if Ndom == 1:
+        for coordinate in coordinates:
+            x, y, z = coordinate
+            file.write(f"{x} {y} {z} \n")
+    else:
+        # if Ndom is more than one, coordinates should be one dimension higher
+        file.write(f"Nmat={Ndom}\n")
+        for domain in range(Ndom):
+            for coordinate in coordinates[domain]:
+                file.write(coordinate + " " + str(domain + 1) + "\n")
+
+    file.close()
+    return newfilename
+
+
 i = 1
 total_dipoles_particles = 0
 for particle in particles:
     plot3d(particle, save=f"particle{i}")
     i += 1
     total_dipoles_particles += np.count_nonzero(particle)
+    x, y, z = np.where(particle == 1)
+    coordinates = zip(x, y, z)
+    write_shape_file("test_images/GRFpart", coordinates)
 
 
 print(
