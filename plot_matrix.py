@@ -20,11 +20,12 @@ def read_matrix(muellerfile, norm=True):
     columnnames = file.readline().split()
     # file always has 361 lines: a header and 360 angles
     # thetas = np.arange(181)
-    thetas = np.arange(360)
+    thetas = np.arange(181)
 
     # saving the matrices in an array containing all the 4x4 matrices
     # sometimes it 180 and sometimes its 360
-    matrices = np.zeros((360, 4, 4))
+    # matrices = np.zeros((360, 4, 4))
+    matrices = np.zeros((181, 4, 4))
 
     line = file.readline()
 
@@ -53,11 +54,17 @@ def read_matrix(muellerfile, norm=True):
         logpath = "/".join(path[:-1]) + "/log"
 
         # read cross section
-        with open(crosssecpath, "r") as f:
-            lines = f.readlines()
-            Cexts = float(lines[0].split()[-1])
-            Cabs = float(lines[2].split()[-1])
-            Csca = Cexts - Cabs
+        try:
+            f = open(crosssecpath, "r")
+        except FileNotFoundError:
+            crosssecpath = "/".join(path[:-1]) + "/CrossSec"
+            f = open(crosssecpath, "r")
+
+        lines = f.readlines()
+        Cexts = float(lines[0].split()[-1])
+        Cabs = float(lines[2].split()[-1])
+        Csca = Cexts - Cabs
+        f.close()
 
         # read in lambda
         with open(logpath, "r") as f:
@@ -168,6 +175,7 @@ if __name__ == "__main__":
     plt.xlabel("theta (degrees)")
     plt.ylabel(f"s{element[0]}{element[1]}")
     # plt.xlim(0, 180)
-    plt.xlim(0, 360)
+    plt.xlim(0, 180)
     plt.grid()
     plt.show()
+    # plt.savefig(f"runs/GRF_test/plots_avg/mueller{args.element}GRFavg")
