@@ -1,6 +1,8 @@
 # folders
 runs/
 test_images/
+test_images2/
+
 # any optool extentions
 *.dat
 *.lnk

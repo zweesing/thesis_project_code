@@ -19,12 +19,15 @@ def read_matrix(muellerfile, norm=True):
     file = open(muellerfile, "r")
     columnnames = file.readline().split()
     # file always has 361 lines: a header and 360 angles
-    thetas = np.arange(181)
+    # thetas = np.arange(181)
+    thetas = np.arange(360)
 
     # saving the matrices in an array containing all the 4x4 matrices
-    matrices = np.zeros((181, 4, 4))
+    # sometimes it 180 and sometimes its 360
+    matrices = np.zeros((360, 4, 4))
 
     line = file.readline()
+
     while line:
         line_split = line.split()
         # this is the angle but it also works as an index
@@ -65,9 +68,11 @@ def read_matrix(muellerfile, norm=True):
 
         # calculate normalisation factor
         norm_fact = l**2 / (np.pi * Csca)
+        print("norm factor:", norm_fact)
 
         # normalise matrix
-        matrices[:, 1:] = matrices[:, 1:] * norm_fact
+        # matrices[:, 1:] = matrices[:, 1:] * norm_fact
+        matrices = matrices * norm_fact
 
     return thetas, matrices
 
@@ -162,5 +167,7 @@ if __name__ == "__main__":
 
     plt.xlabel("theta (degrees)")
     plt.ylabel(f"s{element[0]}{element[1]}")
-    plt.xlim(0, 180)
+    # plt.xlim(0, 180)
+    plt.xlim(0, 360)
+    plt.grid()
     plt.show()
