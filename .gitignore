@@ -2,7 +2,7 @@
 runs/
 test_images/
 test_images2/
-
+test/
 # any optool extentions
 *.dat
 *.lnk

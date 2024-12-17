@@ -10,9 +10,39 @@ import sys
 # this is a little scary but my particles are getting bigger
 sys.setrecursionlimit(3500)
 
-test_folder = "test_images/"
+test_folder = "test/"
 
 
+# for testing
+# np.random.seed(10)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("M", help="number of points", default=40, type=int, nargs="?")
+parser.add_argument("rho", help="size", default=1, type=float, nargs="?")
+args = parser.parse_args()
+
+# ---------------------------------------------------------------------------------- #
+# variables
+# ---------------------------------------------------------------------------------- #
+np.random.seed(0)
+# number of points
+M = args.M
+# size of particles
+rho = args.rho
+# threshold value
+threshold = 0.5
+# porosity division (rho' = rho/por_div). The effect of this is very dependent om M of course.
+# it does not scale linearly.
+por_div = 50
+# porosity threshold
+por_threshold = 0.2
+# add porosity or not
+porosity = True
+save_particles = False
+
+
+# ---------------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------------- #
 def plot3d(arr, title=None, save=False):
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")
@@ -41,6 +71,7 @@ def plot3d(arr, title=None, save=False):
 
     if save:
         plt.savefig(f"{test_folder}{save}.png")
+        plt.close()
     else:
         plt.show()
 
@@ -56,31 +87,6 @@ def plot_slice(arr):
     plt.show()
 
 
-# for testing
-# np.random.seed(10)
-
-parser = argparse.ArgumentParser()
-parser.add_argument("M", help="number of points", default=40, type=int, nargs="?")
-parser.add_argument("rho", help="size", default=1, type=float, nargs="?")
-args = parser.parse_args()
-
-# ---------------------------------------------------------------------------------- #
-# variables
-# ---------------------------------------------------------------------------------- #
-np.random.seed(0)
-# number of points
-M = args.M
-# size of particles
-rho = args.rho
-# threshold value
-threshold = 0.5
-# porosity division (rho' = rho/por_div). The effect of this is very dependent om M of course.
-# it does not scale linearly.
-por_div = 50
-# porosity threshold
-por_threshold = 0.2
-# add porosity or not
-porosity = True
 # ---------------------------------------------------------------------------------- #
 # ---------------------------------------------------------------------------------- #
 
@@ -88,7 +94,9 @@ porosity = True
 print("constructing GRF...")
 start_time = time.time()
 
-Rijk = np.random.rand(M, M, M)
+Rijk = np.random.normal(loc=0, scale=1, size=(M, M, M))
+
+Rijk = np.fft.fftn(Rijk)
 
 # distances to the center 3d array. this is actually half a point off center? but it maches the algorithm.
 i_arr = np.arange(M) + 1
@@ -123,11 +131,14 @@ print("done.")
 print("number of dipoles:", np.count_nonzero(space))
 
 plot3d(space, save="no_poros")
+# plot3d(space)
+
 # ---------------------------------------------------------------------------------- #
 # we can add porosity
 # ---------------------------------------------------------------------------------- #
-print("adding porosity...")
+
 if porosity:
+    print("adding porosity...")
     # second GRF with smaller effective size
     rho2 = rho / por_div
 
@@ -271,12 +282,13 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
 i = 1
 total_dipoles_particles = 0
 for particle in particles:
-    plot3d(particle, save=f"particle{i}")
+    if save_particles:
+        plot3d(particle, save=f"particle{i}")
     i += 1
     total_dipoles_particles += np.count_nonzero(particle)
     x, y, z = np.where(particle == 1)
     coordinates = zip(x, y, z)
-    write_shape_file("test_images/GRFpart", coordinates)
+    write_shape_file(f"{test_folder}/GRFpart", coordinates)
 
 
 print(
