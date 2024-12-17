@@ -10,7 +10,7 @@ import sys
 # this is a little scary but my particles are getting bigger
 sys.setrecursionlimit(3500)
 
-test_folder = "test/"
+test_folder = "test_images/"
 
 
 # for testing
@@ -24,7 +24,7 @@ args = parser.parse_args()
 # ---------------------------------------------------------------------------------- #
 # variables
 # ---------------------------------------------------------------------------------- #
-np.random.seed(0)
+# np.random.seed(0)
 # number of points
 M = args.M
 # size of particles
@@ -38,7 +38,7 @@ por_div = 50
 por_threshold = 0.2
 # add porosity or not
 porosity = True
-save_particles = False
+save_particles = True
 
 
 # ---------------------------------------------------------------------------------- #
@@ -197,13 +197,30 @@ def get_particle(coordinate, arr, destination_array):
     for xi in [-1, 0, 1]:
         for yi in [-1, 0, 1]:
             for zi in [-1, 0, 1]:
-                if (
-                    not (xi == 0 and yi == 0 and zi == 0)
-                    and (0 <= x + xi < M)
-                    and (0 <= y + yi < M)
-                    and (0 <= z + zi < M)
-                ):  # don't add the current coordinate, and dont add anything outside of the array
-                    neighbours.append((x + xi, y + yi, z + zi))
+                if not (xi == 0 and yi == 0 and zi == 0):  # dont add current point
+                    # if the index is too big, subtract M
+
+                    newx = x + xi
+                    newy = y + yi
+                    newz = z + zi
+
+                    if newx >= M:
+                        newx -= M
+                    if newy >= M:
+                        newy -= M
+                    if newz >= M:
+                        newz -= M
+                    # current issue: we cannot keep doing this if the particle 'wraps' multiple times
+                    # but we can try...
+                    if newx < -M:
+                        newx += M
+                    if newy < -M:
+                        newy += M
+                    if newz < -M:
+                        newz += M
+
+                    neighbours.append((newx, newy, newz))
+                    # print((newx, newy, newz))
 
     # save point and remove from original
     destination_array[coordinate] = 1
@@ -221,9 +238,22 @@ particles_removed = False
 space_copy = copy.copy(space)  # space_copy will be modified an dslowly eaten
 particles = []  # list to fill with particles arrays
 
+
+# we want to remove particles from an array that is 3Mx3Mx3M, which is 27 times the original array pasted together
+# keep only starting in the center array
+#  and remove all particles like this. this way we 'paste' them together
+
+# 1 idea: interesting. This should work, I tested it in 2D
+# particle_remove_array = np.tile(space_copy, (3 * M, 3 * M, 3 * M))
+
+# another idea: make recursion continue on the 'other side'
+# then we dont have the issue of getting the same particle multiple times
+
+
 # get a point inside a particle. this can be done a lot easier possibly but this works
 x, y, z = np.where(space_copy == 1)
 coordinate = (x[0], y[0], z[0])
+
 
 while not particles_removed:
 
