@@ -10,15 +10,15 @@ import sys
 # this is a little scary but my particles are getting bigger
 sys.setrecursionlimit(3500)
 
-test_folder = "test_images/"
+test_folder = "test_new_dexp/"
 
 
 # for testing
-# np.random.seed(10)
+np.random.seed(10)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("M", help="number of points", default=40, type=int, nargs="?")
-parser.add_argument("rho", help="size", default=1, type=float, nargs="?")
+parser.add_argument("M", help="number of points", default=128, type=int, nargs="?")
+parser.add_argument("rho", help="size", default=8, type=float, nargs="?")
 args = parser.parse_args()
 
 # ---------------------------------------------------------------------------------- #
@@ -36,9 +36,9 @@ threshold = 0.5
 por_div = 50
 # porosity threshold
 por_threshold = 0.2
-# add porosity or not
-porosity = True
-save_particles = True
+# add porosity or not (NOT EDITIED WITH THE SHIFT YET)
+porosity = False
+save_particles = False
 
 
 # ---------------------------------------------------------------------------------- #
@@ -87,6 +87,11 @@ def plot_slice(arr):
     plt.show()
 
 
+def plot_heatmap(slice, maxm=100):
+    plt.imshow(slice, cmap="hot", interpolation="nearest", vmin=0, vmax=maxm)
+    plt.show()
+
+
 # ---------------------------------------------------------------------------------- #
 # ---------------------------------------------------------------------------------- #
 
@@ -95,27 +100,48 @@ print("constructing GRF...")
 start_time = time.time()
 
 Rijk = np.random.normal(loc=0, scale=1, size=(M, M, M))
-
+# print(Rijk)
 Rijk = np.fft.fftn(Rijk)
 
-# distances to the center 3d array. this is actually half a point off center? but it maches the algorithm.
-i_arr = np.arange(M) + 1
-j_arr = np.arange(M) + 1
-k_arr = np.arange(M) + 1
+# THIS IS A TEST
+# Rijk = np.fft.fftshift(Rijk)
 
-print("making distances array...")
-d = np.sqrt(
-    (i_arr[:, np.newaxis, np.newaxis] - M / 2) ** 2
-    + (j_arr[:, np.newaxis] - M / 2) ** 2
-    + (k_arr - M / 2) ** 2
-)
+# # distances to the center 3d array. this is actually half a point off center? but it maches the algorithm.
+# i_arr = np.arange(M) + 1
+# j_arr = np.arange(M) + 1
+# k_arr = np.arange(M) + 1
 
-# construct the field
-Gijk = Rijk * np.exp(-rho * d**2)
+# print("making distances array...")
+# d = np.sqrt(
+#     (i_arr[:, np.newaxis, np.newaxis] - M / 2) ** 2
+#     + (j_arr[np.newaxis, :, np.newaxis] - M / 2) ** 2
+#     + (k_arr[np.newaxis, np.newaxis, :] - M / 2) ** 2
+# )
+
+# # construct the field
+# Gijk = Rijk * np.exp(-rho * d**2)
+
+
+# new method of distances array in a triple loop to try and match michiel
+Gijk = copy.copy(Rijk)
+for i in range(M):
+    for j in range(M):
+        for k in range(M):
+            x = 2.0 * i / M - 1.0
+            y = 2.0 * j / M - 1.0
+            z = 2.0 * k / M - 1.0
+            Gijk[i, j, k] = Rijk[i, j, k] * np.exp(-(x**2 + y**2 + z**2) * 500)
+
+
+# maxm = np.max(Gijk)
+# for i in range(M):
+#     print(np.abs(Gijk[i]))
+#     plot_heatmap(np.abs(Gijk[i]))
 
 # we need to take the 3d fourier transform. ( not sure how this function wants the input to look like and what axes to specify) (axes=[0,1] or [1,0] does not change anything)
-GijkF = np.fft.fftn(Gijk)
-
+GijkF = np.fft.ifftn(Gijk)  # now trying inverse?
+# THIS IS A TEST
+# GijkF = np.fft.fftshift(GijkF)
 print("first fourier...")
 
 # normalise
@@ -131,7 +157,7 @@ print("done.")
 print("number of dipoles:", np.count_nonzero(space))
 
 plot3d(space, save="no_poros")
-# plot3d(space)
+plot3d(space)
 
 # ---------------------------------------------------------------------------------- #
 # we can add porosity

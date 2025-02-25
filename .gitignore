@@ -3,6 +3,7 @@ runs/
 test_images/
 test_images2/
 test/
+test_new_dexp/
 # any optool extentions
 *.dat
 *.lnk
