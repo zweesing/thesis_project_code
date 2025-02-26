@@ -17,8 +17,8 @@ test_folder = "test_new_dexp/"
 np.random.seed(10)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("M", help="number of points", default=128, type=int, nargs="?")
-parser.add_argument("rho", help="size", default=8, type=float, nargs="?")
+parser.add_argument("M", help="number of points", default=64, type=int, nargs="?")
+parser.add_argument("rho", help="size", default=100, type=float, nargs="?")
 args = parser.parse_args()
 
 # ---------------------------------------------------------------------------------- #
@@ -38,7 +38,9 @@ por_div = 50
 por_threshold = 0.2
 # add porosity or not (NOT EDITIED WITH THE SHIFT YET)
 porosity = False
-save_particles = False
+rho2 = rho / por_div
+
+save_particles = True
 
 
 # ---------------------------------------------------------------------------------- #
@@ -95,57 +97,41 @@ def plot_heatmap(slice, maxm=100):
 # ---------------------------------------------------------------------------------- #
 # ---------------------------------------------------------------------------------- #
 
-# construct random points
+# construct 3D space with normal random points
 print("constructing GRF...")
-start_time = time.time()
-
 Rijk = np.random.normal(loc=0, scale=1, size=(M, M, M))
-# print(Rijk)
+# porosity
+Rijk2 = np.random.normal(loc=0, scale=1, size=(M, M, M))
+
+# fourier transform to freq space
 Rijk = np.fft.fftn(Rijk)
-
-# THIS IS A TEST
-# Rijk = np.fft.fftshift(Rijk)
-
-# # distances to the center 3d array. this is actually half a point off center? but it maches the algorithm.
-# i_arr = np.arange(M) + 1
-# j_arr = np.arange(M) + 1
-# k_arr = np.arange(M) + 1
-
-# print("making distances array...")
-# d = np.sqrt(
-#     (i_arr[:, np.newaxis, np.newaxis] - M / 2) ** 2
-#     + (j_arr[np.newaxis, :, np.newaxis] - M / 2) ** 2
-#     + (k_arr[np.newaxis, np.newaxis, :] - M / 2) ** 2
-# )
-
-# # construct the field
-# Gijk = Rijk * np.exp(-rho * d**2)
+Rijk2 = np.fft.fftn(Rijk2)
 
 
 # new method of distances array in a triple loop to try and match michiel
+# (its not necessary to make these copies but it helps with my overview)
 Gijk = copy.copy(Rijk)
+Gijk2 = copy.copy(Rijk2)
+
 for i in range(M):
     for j in range(M):
         for k in range(M):
+            # scales x y and z to be between -1 and 1
+            # theres a mistake in here wrt indexing but im too dumb to fix it rn (its in notebook)
+            # (could just change the loop to be 1-M+1 and the -1's in the equation)
             x = 2.0 * i / M - 1.0
             y = 2.0 * j / M - 1.0
             z = 2.0 * k / M - 1.0
-            Gijk[i, j, k] = Rijk[i, j, k] * np.exp(-(x**2 + y**2 + z**2) * 500)
+            Gijk[i, j, k] = Rijk[i, j, k] * np.exp(-(x**2 + y**2 + z**2) * rho)
+            Gijk2[i, j, k] = Rijk2[i, j, k] * np.exp(-(x**2 + y**2 + z**2) * rho2)
 
-
-# maxm = np.max(Gijk)
-# for i in range(M):
-#     print(np.abs(Gijk[i]))
-#     plot_heatmap(np.abs(Gijk[i]))
-
-# we need to take the 3d fourier transform. ( not sure how this function wants the input to look like and what axes to specify) (axes=[0,1] or [1,0] does not change anything)
-GijkF = np.fft.ifftn(Gijk)  # now trying inverse?
-# THIS IS A TEST
-# GijkF = np.fft.fftshift(GijkF)
-print("first fourier...")
+# transform back into space space
+GijkF = np.fft.ifftn(Gijk)
+GijkF2 = np.fft.ifftn(Gijk2)
 
 # normalise
 GijkF = GijkF / np.max(GijkF)
+GijkF2 = GijkF2 / np.max(GijkF2)
 
 # all points where GijF is > 0.5 are inside the particle.
 # so all points in space will be evaluated besed on the value from Gijkf
@@ -153,38 +139,20 @@ space = np.zeros((M, M, M))
 space[GijkF > threshold] = 1
 
 no_poros = copy.copy(space)
+if porosity:
+    space[GijkF2 > por_threshold] = 0
 print("done.")
 print("number of dipoles:", np.count_nonzero(space))
 
-plot3d(space, save="no_poros")
+por_diff = no_poros - space  # this should leave 1 values where there is stuff removed
+print("dipoles removed with porosity:", np.count_nonzero(por_diff))
+
+# save images
+plot3d(no_poros, save="no_poros")
+plot3d(space, save="added_poros")
+
 plot3d(space)
 
-# ---------------------------------------------------------------------------------- #
-# we can add porosity
-# ---------------------------------------------------------------------------------- #
-
-if porosity:
-    print("adding porosity...")
-    # second GRF with smaller effective size
-    rho2 = rho / por_div
-
-    # construct the field
-    Gijk2 = Rijk * np.exp(-rho2 * d**2)
-    print("second fourier...")
-    GijkF2 = np.fft.fftn(Gijk2)
-    print("done with second fourier.")
-    GijkF2 = GijkF2 / np.max(GijkF2)
-
-    # we add vacuum back where gijkf2 is above the porosity threshold
-    space[GijkF2 > por_threshold] = 0
-
-    # see where the porosity got added.
-    por_diff = (
-        no_poros - space
-    )  # this should leave 1 values where there is stuff removed
-    print("dipoles removed with porosity:", np.count_nonzero(por_diff))
-
-    plot3d(space, save="poros_added")
 # ---------------------------------------------------------------------------------- #
 # extract the particles from here
 # ---------------------------------------------------------------------------------- #
