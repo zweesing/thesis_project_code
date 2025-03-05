@@ -6,11 +6,12 @@ import argparse
 import time
 import copy
 import sys
+import os
 
 # this is a little scary but my particles are getting bigger
 sys.setrecursionlimit(3500)
 
-test_folder = "test_new_dexp/"
+foldername = "ahhhh"
 
 
 # for testing
@@ -36,11 +37,14 @@ threshold = 0.5
 por_div = 50
 # porosity threshold
 por_threshold = 0.2
-# add porosity or not (NOT EDITIED WITH THE SHIFT YET)
-porosity = False
+# add porosity or not
+porosity = True
 rho2 = rho / por_div
 
 save_particles = True
+# size range for saving particles
+part_low_lim = 1000
+part_up_lim = 1500
 
 
 # ---------------------------------------------------------------------------------- #
@@ -72,7 +76,7 @@ def plot3d(arr, title=None, save=False):
         ax.set_title(title)
 
     if save:
-        plt.savefig(f"{test_folder}{save}.png")
+        plt.savefig(f"{save}.png")
         plt.close()
     else:
         plt.show()
@@ -139,17 +143,16 @@ space = np.zeros((M, M, M))
 space[GijkF > threshold] = 1
 
 no_poros = copy.copy(space)
+
 if porosity:
     space[GijkF2 > por_threshold] = 0
+
 print("done.")
 print("number of dipoles:", np.count_nonzero(space))
 
 por_diff = no_poros - space  # this should leave 1 values where there is stuff removed
 print("dipoles removed with porosity:", np.count_nonzero(por_diff))
 
-# save images
-plot3d(no_poros, save="no_poros")
-plot3d(space, save="added_poros")
 
 plot3d(space)
 
@@ -176,14 +179,16 @@ plot3d(space)
 
 # this method should work after dealing with porosity
 def get_particle(coordinate, arr, destination_array):
-    """given a coordinate, check if the coordinate is inside a particle in the 3d array.
-    then recursively check all the neighbouring spaces to get all the dipoles of a particle.
-    works for one particle,and has to start within a particle.
+    """given a starting coordinate, recursively check all the neighbouring spaces
+    to get all the dipoles in a particle.
+    Works for one particle,and has to start within a particle.
+
+    arr and destination array need to have the same size and shape.
 
     Args:
         coordinate (tuple): x,y,z coordinate of starting point
         arr (3D array): space array containing all the particles
-        destination_array
+        destination_array (3D array): empty array of same size as arr to save particle in
     """
     # get the 26 neighbours. check if they are not outside of the array
     x, y, z = coordinate
@@ -191,9 +196,11 @@ def get_particle(coordinate, arr, destination_array):
     for xi in [-1, 0, 1]:
         for yi in [-1, 0, 1]:
             for zi in [-1, 0, 1]:
-                if not (xi == 0 and yi == 0 and zi == 0):  # dont add current point
-                    # if the index is too big, subtract M
+                if not (
+                    xi == 0 and yi == 0 and zi == 0
+                ):  # dont add current point (not a neighbour)
 
+                    # if the index is too big, subtract M
                     newx = x + xi
                     newy = y + yi
                     newz = z + zi
@@ -204,8 +211,7 @@ def get_particle(coordinate, arr, destination_array):
                         newy -= M
                     if newz >= M:
                         newz -= M
-                    # current issue: we cannot keep doing this if the particle 'wraps' multiple times
-                    # but we can try...
+                    # if index is too small, add M. This only happens if the particle wraps around multiple times
                     if newx < -M:
                         newx += M
                     if newy < -M:
@@ -214,7 +220,6 @@ def get_particle(coordinate, arr, destination_array):
                         newz += M
 
                     neighbours.append((newx, newy, newz))
-                    # print((newx, newy, newz))
 
     # save point and remove from original
     destination_array[coordinate] = 1
@@ -229,37 +234,22 @@ def get_particle(coordinate, arr, destination_array):
 
 # we will do this for each particle so there will be a while loop involved.
 particles_removed = False
-space_copy = copy.copy(space)  # space_copy will be modified an dslowly eaten
+space_copy = copy.copy(space)  # space_copy will be modified an slowly eaten
 particles = []  # list to fill with particles arrays
 
-
-# we want to remove particles from an array that is 3Mx3Mx3M, which is 27 times the original array pasted together
-# keep only starting in the center array
-#  and remove all particles like this. this way we 'paste' them together
-
-# 1 idea: interesting. This should work, I tested it in 2D
-# particle_remove_array = np.tile(space_copy, (3 * M, 3 * M, 3 * M))
-
-# another idea: make recursion continue on the 'other side'
-# then we dont have the issue of getting the same particle multiple times
-
-
-# get a point inside a particle. this can be done a lot easier possibly but this works
+# get a point inside a particle to start
 x, y, z = np.where(space_copy == 1)
 coordinate = (x[0], y[0], z[0])
 
-
 while not particles_removed:
 
-    x, y, z = np.where(space_copy == 1)
-    coordinate = (x[0], y[0], z[0])
-
+    # create new empty array to store particle in, and extract the particle
     particle_arr = np.zeros((M, M, M))
     get_particle(coordinate, space_copy, particle_arr)
 
     particles.append(particle_arr)
 
-    # new particle
+    # new particle. If theres nothing left, exit loop
     x, y, z = np.where(space_copy == 1)
     if x.size > 0:
         coordinate = (x[0], y[0], z[0])
@@ -269,25 +259,29 @@ while not particles_removed:
 num_parts = len(particles)
 print("number of particles extracted:", num_parts)
 # ---------------------------------------------------------------------------------- #
-# saving the particles. I kinda only want to save the particles that make sense (not the corners)
+# saving the particles. I only want to save particles that are a certain size
 # ---------------------------------------------------------------------------------- #
 
 
 def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
+    # make a file for the particle with increasing particle number
     # idk why im doing this so complicatedly
-    nofile = True
-    counter = 0
-    newfilename = filename
+    # nofile = True
+    # counter = 0
+    # newfilename = filename + str(counter)
 
-    while nofile:
-        try:
-            file = open(f"{newfilename}.geom", "x")
-            nofile = False
-        except FileExistsError:
-            counter += 1
-            newfilename = filename + str(counter)
+    # while nofile:
+    #     try:
+    #         file = open(f"{newfilename}.geom", "x")
+    #         nofile = False
+    #     except FileExistsError:
+    #         counter += 1
+    #         newfilename = filename + str(counter)
 
-    file.write("# some comments about the shape i made\n")
+    file = open(f"{filename}.geom", "x")
+
+    # write the particle to file
+    file.write(comments)
     if Ndom == 1:
         for coordinate in coordinates:
             x, y, z = coordinate
@@ -300,19 +294,42 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
                 file.write(coordinate + " " + str(domain + 1) + "\n")
 
     file.close()
-    return newfilename
 
 
-i = 1
+# make a folder (very elaborate sorry)
+if os.path.isdir(foldername):
+    nofolder = True
+    counter = 1
+    newfoldername = foldername + str(counter)
+
+    while nofolder:
+        try:
+            print(newfoldername)
+            os.mkdir(newfoldername)
+            nofolder = False
+        except FileExistsError:
+            counter += 1
+            newfoldername = foldername + str(counter)
+else:
+    newfoldername = foldername
+    os.mkdir(newfoldername)
+
+
+# save particles one by one
+# have a filter for particle size?
+i = 0
 total_dipoles_particles = 0
 for particle in particles:
     if save_particles:
-        plot3d(particle, save=f"particle{i}")
-    i += 1
+        plot3d(particle, save=f"{newfoldername}/particle{i}")
+
     total_dipoles_particles += np.count_nonzero(particle)
+
     x, y, z = np.where(particle == 1)
     coordinates = zip(x, y, z)
-    write_shape_file(f"{test_folder}/GRFpart", coordinates)
+    write_shape_file(f"{newfoldername}/GRFpart{i}", coordinates)
+
+    i += 1
 
 
 print(
