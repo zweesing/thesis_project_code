@@ -1,9 +1,8 @@
 # folders
 runs/
-test_images/
-test_images2/
-test/
-test_new_dexp/
+ahhhh/
+recombination_test/
+size_range_test/
 # any optool extentions
 *.dat
 *.lnk

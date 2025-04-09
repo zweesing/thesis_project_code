@@ -9,9 +9,10 @@ import sys
 import os
 
 # this is a little scary but my particles are getting bigger
-sys.setrecursionlimit(3500)
+# this barely touches my 16 gb ram so it could be so so much bigger
+sys.setrecursionlimit(100000)
 
-foldername = "ahhhh"
+foldername = "recombination_test"
 
 
 # for testing
@@ -41,9 +42,12 @@ por_threshold = 0.2
 porosity = True
 rho2 = rho / por_div
 
+# volume threshold
+vol_threshold = threshold * 1.1
+
 save_particles = True
 # size range for saving particles
-part_low_lim = 1000
+part_low_lim = 500
 part_up_lim = 1500
 
 
@@ -157,24 +161,17 @@ print("dipoles removed with porosity:", np.count_nonzero(por_diff))
 plot3d(space)
 
 # ---------------------------------------------------------------------------------- #
+# we can add a mantle
+# same idea as normal particle but theres another threshold such that the mantle
+# is x% of the volume
+# ---------------------------------------------------------------------------------- #
+
+volume_particles = np.count_nonzero(space)
+
+
+# ---------------------------------------------------------------------------------- #
 # extract the particles from here
 # ---------------------------------------------------------------------------------- #
-# plot_slice(space[0])
-
-# pick a point. any point that is inside a particle.
-# check all eight neighbours. if any are outside the particle, add point to some list
-#  go to new point that is one of those neighbours and repeat
-
-# what does this give us? in the end, a0n entire outside boundary of the particle (potato peel)
-# this means we have the 6 bounds to extract it.
-
-# check the ouside of the extraction box for particle bits (ones) (jonas' idea).
-# if there is a point in here that is NOT in my potato peel, it is a slice of a different particle
-# we could then do another search to find the boundary of that particle to remove it? no idk
-# cris has an idea to do recursive boxes that get smaller and smaller until i only have the particle
-
-# could also just try neighbour searching for the entire thing.
-# recursively. picture of cris' idea
 
 
 # this method should work after dealing with porosity
@@ -258,6 +255,43 @@ while not particles_removed:
 
 num_parts = len(particles)
 print("number of particles extracted:", num_parts)
+
+# ---------------------------------------------------------------------------------- #
+# recombining the particles if they are not good
+# ---------------------------------------------------------------------------------- #
+
+
+def recombine_particle(particle):
+    """takes a 'split' particle and recombines it by shifting the whole particle down
+    and then moving the bottom half up to meet the top half.
+
+    Args:
+        particle (3d arr): array containing split particle
+
+    Returns:
+        3d arr: recombined particle
+    """
+    # plot the particle to see it
+    # plot3d(particle, title="before shift")
+    x, y, z = np.where(particle == 1)
+
+    # shift necessary directions
+    while 0 in x:
+        x -= 1
+
+    while 0 in y:
+        y -= 1
+
+    while 0 in z:
+        z -= 1
+
+    arr = np.zeros((M, M, M))
+    arr[x, y, z] = 1
+    # plot3d(arr, title="fixed?")
+
+    return arr
+
+
 # ---------------------------------------------------------------------------------- #
 # saving the particles. I only want to save particles that are a certain size
 # ---------------------------------------------------------------------------------- #
@@ -281,7 +315,7 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
     file = open(f"{filename}.geom", "x")
 
     # write the particle to file
-    file.write(comments)
+    file.write("# " + comments + "\n")
     if Ndom == 1:
         for coordinate in coordinates:
             x, y, z = coordinate
@@ -304,7 +338,6 @@ if os.path.isdir(foldername):
 
     while nofolder:
         try:
-            print(newfoldername)
             os.mkdir(newfoldername)
             nofolder = False
         except FileExistsError:
@@ -319,18 +352,43 @@ else:
 # have a filter for particle size?
 i = 0
 total_dipoles_particles = 0
+particles_saved = 0
 for particle in particles:
-    if save_particles:
-        plot3d(particle, save=f"{newfoldername}/particle{i}")
 
     total_dipoles_particles += np.count_nonzero(particle)
 
     x, y, z = np.where(particle == 1)
-    coordinates = zip(x, y, z)
-    write_shape_file(f"{newfoldername}/GRFpart{i}", coordinates)
+    if part_low_lim < len(x) < part_up_lim:
+
+        # both 0 and max need to touch if the particle is split
+        if (
+            (0 in x and M - 1 in x)
+            or (0 in y and M - 1 in y)
+            or (0 in z and M - 1 in z)
+        ):
+
+            particle = recombine_particle(particle)
+            x, y, z = np.where(particle == 1)
+
+        if save_particles:
+            plot3d(particle, title="ACCEPTED", save=f"{newfoldername}/particle{i}")
+
+        coordinates = zip(x, y, z)
+        write_shape_file(f"{newfoldername}/GRFpart{i}", coordinates)
+        particles_saved += 1
+    elif save_particles:
+        pass
+        # plot3d(particle, title="REJECTED", save=f"{newfoldername}/particle{i}")
 
     i += 1
+if save_particles:
+    # save the total files
+    if porosity:
+        plot3d(space, save=f"{newfoldername}/added_poros")
+    plot3d(no_poros, save=f"{newfoldername}/no_poros")
 
+print(f"saving particles in {newfoldername}")
+print("number of particles saved:", particles_saved)
 
 print(
     f"dipole sanity check: \n    total from extracted particles={total_dipoles_particles}\n    total from espace={np.count_nonzero(space)} "
@@ -344,3 +402,8 @@ volume_particles = np.count_nonzero(space)
 # not sure how to do this, you'd have to run it to see how much the threshold should be maybe
 # unless i can find a way to understand what volume my parameters will produce. It would be too
 # time consuming to do it twice.
+
+
+# ---------------------------------------------------------------------------------- #
+# rewrite geom files so they are connected
+# ---------------------------------------------------------------------------------- #
