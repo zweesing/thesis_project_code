@@ -12,7 +12,7 @@ import os
 # this barely touches my 16 gb ram so it could be so so much bigger
 sys.setrecursionlimit(100000)
 
-foldername = "recombination_test"
+foldername = "mantle_write_test"
 
 
 # for testing
@@ -43,8 +43,8 @@ porosity = True
 rho2 = rho / por_div
 
 # volume threshold
-vol_threshold = threshold * 1.1
-
+mantle_threshold = threshold * 0.9
+mantle = True
 save_particles = True
 # size range for saving particles
 part_low_lim = 500
@@ -59,12 +59,16 @@ def plot3d(arr, title=None, save=False):
 
     # find the coordinates for plotting
     x, y, z = np.where(arr == 1)
+    x2, y2, z2 = np.where(arr == 2)
 
     # https://discourse.matplotlib.org/t/collection-of-markers-with-size-set-in-data-units/21057/2
     # this has a good idea on how to make the plotting look nice i think. not implemented yet
 
     # Plot the points
-    ax.scatter(x, y, z)
+    ax.scatter(x, y, z, color="orange", label="core")
+    if x2.size > 0:
+        ax.scatter(x2, y2, z2, alpha=0.5, color="blue", label="mantle")
+        ax.legend()
 
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
@@ -146,6 +150,12 @@ GijkF2 = GijkF2 / np.max(GijkF2)
 space = np.zeros((M, M, M))
 space[GijkF > threshold] = 1
 
+# ---------------------------------------------------------------------------------- #
+# add porosity
+# NOTE whether the mantle is added before porosity or after determines if
+# the mantle is porous
+# ---------------------------------------------------------------------------------- #
+
 no_poros = copy.copy(space)
 
 if porosity:
@@ -161,13 +171,25 @@ print("dipoles removed with porosity:", np.count_nonzero(por_diff))
 plot3d(space)
 
 # ---------------------------------------------------------------------------------- #
-# we can add a mantle
+# add a mantle
 # same idea as normal particle but theres another threshold such that the mantle
 # is x% of the volume
 # ---------------------------------------------------------------------------------- #
 
 volume_particles = np.count_nonzero(space)
+if mantle:
+    # currently this is laying the mantle over instead of converting the outide
+    # to mantle
+    space[(GijkF > mantle_threshold) & (GijkF < threshold)] = 2
 
+    plot3d(space, title="mantle")
+
+
+# ---------------------------------------------------------------------------------- #
+# add porosity
+# NOTE whether the mantle is added before porosity or after determines if
+# the mantle is porous
+# ---------------------------------------------------------------------------------- #
 
 # ---------------------------------------------------------------------------------- #
 # extract the particles from here
@@ -219,12 +241,12 @@ def get_particle(coordinate, arr, destination_array):
                     neighbours.append((newx, newy, newz))
 
     # save point and remove from original
-    destination_array[coordinate] = 1
+    destination_array[coordinate] = arr[coordinate]
     arr[coordinate] = 0
 
     # for each neighbour, call function and then add to particle and remove from original
     for neighbour in neighbours:
-        if arr[neighbour] == 1:
+        if arr[neighbour] != 0:
             # if its inside the particle, go deeper.
             get_particle(neighbour, arr, particle_arr)
 
@@ -235,7 +257,7 @@ space_copy = copy.copy(space)  # space_copy will be modified an slowly eaten
 particles = []  # list to fill with particles arrays
 
 # get a point inside a particle to start
-x, y, z = np.where(space_copy == 1)
+x, y, z = np.where(space_copy != 0)
 coordinate = (x[0], y[0], z[0])
 
 while not particles_removed:
@@ -247,7 +269,7 @@ while not particles_removed:
     particles.append(particle_arr)
 
     # new particle. If theres nothing left, exit loop
-    x, y, z = np.where(space_copy == 1)
+    x, y, z = np.where(space_copy != 0)
     if x.size > 0:
         coordinate = (x[0], y[0], z[0])
     else:
@@ -272,22 +294,27 @@ def recombine_particle(particle):
         3d arr: recombined particle
     """
     # plot the particle to see it
-    # plot3d(particle, title="before shift")
+    plot3d(particle, title="before shift")
     x, y, z = np.where(particle == 1)
+    x2, y2, z2 = np.where(particle == 2)
 
     # shift necessary directions
-    while 0 in x:
+    while 0 in x or 0 in x2:
         x -= 1
+        x2 -= 1
 
-    while 0 in y:
+    while 0 in y or 0 in y2:
         y -= 1
+        y2 -= 1
 
-    while 0 in z:
+    while 0 in z or 0 in z2:
         z -= 1
+        z2 -= 1
 
     arr = np.zeros((M, M, M))
     arr[x, y, z] = 1
-    # plot3d(arr, title="fixed?")
+    arr[x2, y2, z2] = 2
+    plot3d(arr, title="fixed?")
 
     return arr
 
@@ -325,7 +352,8 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
         file.write(f"Nmat={Ndom}\n")
         for domain in range(Ndom):
             for coordinate in coordinates[domain]:
-                file.write(coordinate + " " + str(domain + 1) + "\n")
+                x, y, z = coordinate
+                file.write(f"{x} {y} {z}" + " " + str(domain + 1) + "\n")
 
     file.close()
 
@@ -350,6 +378,11 @@ else:
 
 # save particles one by one
 # have a filter for particle size?
+if mantle:
+    Ndom = 2
+else:
+    Ndom = 1
+
 i = 0
 total_dipoles_particles = 0
 particles_saved = 0
@@ -357,7 +390,8 @@ for particle in particles:
 
     total_dipoles_particles += np.count_nonzero(particle)
 
-    x, y, z = np.where(particle == 1)
+    # these xyz are the total particle including mantle. this for checking size and split
+    x, y, z = np.where(particle != 0)
     if part_low_lim < len(x) < part_up_lim:
 
         # both 0 and max need to touch if the particle is split
@@ -368,13 +402,22 @@ for particle in particles:
         ):
 
             particle = recombine_particle(particle)
-            x, y, z = np.where(particle == 1)
 
         if save_particles:
             plot3d(particle, title="ACCEPTED", save=f"{newfoldername}/particle{i}")
 
-        coordinates = zip(x, y, z)
-        write_shape_file(f"{newfoldername}/GRFpart{i}", coordinates)
+        # save coordinates
+        x, y, z = np.where(particle == 1)
+        if mantle:
+            x2, y2, z2 = np.where(particle == 2)
+            core_coords = np.stack((x, y, z), axis=-1)
+            mantle_coords = np.stack((x2, y2, z2), axis=-1)
+            coordinates = [core_coords, mantle_coords]
+        else:
+
+            coordinates = zip(x, y, z)
+
+        write_shape_file(f"{newfoldername}/GRFpart{i}", coordinates, Ndom)
         particles_saved += 1
     elif save_particles:
         pass

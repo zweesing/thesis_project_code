@@ -3,6 +3,8 @@ runs/
 ahhhh/
 recombination_test/
 size_range_test/
+mantle_test/
+mantle_write_test/
 # any optool extentions
 *.dat
 *.lnk
