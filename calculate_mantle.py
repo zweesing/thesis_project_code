@@ -1,7 +1,7 @@
 import numpy as np
 
-mantle_percentage = 0.2
-mantle_thickness = 2
+mantle_percentage = 0.3
+mantle_thickness = 1
 
 
 # the equation is not entirely trivial, its cubic. had gemini write me a function
