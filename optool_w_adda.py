@@ -1,33 +1,22 @@
 """One big mofo to combine everything I have so far
 
-probably best to have some class object? I don't need to keep the objects, can write them to a file
 inputs:
 
     lambda or lambda range
 
     size of particles (or range)
 
-    volumen fraction porosity
-    volume fraction mantle
+    volume fraction porosity
 
-        (material)
-    n, k for core
-    n,k for mantle
+    mantle and core materials mass fraction -> gives mantle volume fraction
 
     n realisations (foraveraging)
     n rotations (for averaging)
 
 
-    for the GRF
-        rho
-        rho_porous
-        resolution/dpl
-
-        this together gives M
-
 
     optional:
-        normalisation for the matrix?
+        normalisation for the matrix
 
 outputs:
     kappa_scat and kappa_abs
@@ -42,13 +31,17 @@ if GRF:
     turn GRF file into adda geometry file
 
 make optool write the files for n and k. (needs the material for this and the wavelength(grid))
-optionally, get n and k for mantle as well
+for both the mantle and the core (mix per domain if multiple materials)
 
-read in n and k for the wavelength grid. also rho for the material will be in here.
+rho for the material will be in these files. Calculate which particles are needed by getting a dipole ratio
+to match with the porosity fraction to select particle(s)
 
-run adda with the shapefile.
+read in n and k for the wavelength grid
+
+run adda with the shapefile(s).
+
 this gives a matrix and a crosssection (and a log file). want to convert crosssection into kappa.
-Might want to rewrite this into optool style output, so for all lambdas one file.
+Want to rewrite this into optool style output, so for all lambdas one file.
 
 
 
@@ -62,17 +55,13 @@ import os
 micron = 1e-4
 
 
-def make_GRF(rho, porosity=True, rho_por_frac=50, threshold=0.5, threshold_por=0.2):
-    # TODO
-    pass
-
-
-def get_nk(wavelength, material):
-    """get refractive index for specified material from optool
+def get_nk(wavelength, materials):
+    """get refractive index for specified material(s) from optool. Material can be
+    the entire string including the mass fractions.
 
     Args:
         wavelength (arr or float): wavelength in micron.can be a single wavelength or a range
-        material (str): material name or shorthand
+        material (str): material name(s) or shorthand and mass fractions if multiple.
     """
     # TODO
     # possibly specify a single size so optool doesnt calculate a range (optimisation)
@@ -138,23 +127,28 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # TODO this needs to be able to take a range. and the types need to make sense?
     parser.add_argument("-l", "--lambda")
-    # TODO this must state the order of materials well (or we do separate option for core and mantle like optool)
+    # mass fraction is required here for separating mantle and core.
     parser.add_argument(
-        "-m", "--material", help="material(s) of the particle.", nargs="*"
+        "-c", "--core", help="material(s) and mass fractions of the core.", nargs="*"
     )
-
+    parser.add_argument(
+        "-m", "--mantle", help="material(s) and mass fractions of the core.", nargs="*"
+    )
+    parser.add_argument("-p", "--porosity", help="porosity volume fraction")
+    # TODO size range as in optool
     parser.add_argument(
         "-a", "--size", help="size of the particle", default=1, type=float, nargs="?"
     )
 
-    parser.add_argument(
-        "-dpl",
-        "--dpl",
-        help="dipoles per lambda, resolution parameter",
-        default=16,
-        type=int,
-        nargs="?",
-    )
+    # do I need this?
+    # parser.add_argument(
+    #     "-dpl",
+    #     "--dpl",
+    #     help="dipoles per lambda, resolution parameter",
+    #     default=16,
+    #     type=int,
+    #     nargs="?",
+    # )
     args = parser.parse_args()
 
     # ------------------------------------------------------------------------------------- #

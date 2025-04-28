@@ -12,14 +12,14 @@ import os
 # this barely touches my 16 gb ram so it could be so so much bigger
 sys.setrecursionlimit(100000)
 
-foldername = "mantle_write_test"
+foldername = "mantle_size"
 
 
 # for testing
 np.random.seed(10)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("M", help="number of points", default=64, type=int, nargs="?")
+parser.add_argument("M", help="number of points", default=128, type=int, nargs="?")
 parser.add_argument("rho", help="size", default=100, type=float, nargs="?")
 args = parser.parse_args()
 
@@ -31,23 +31,32 @@ args = parser.parse_args()
 M = args.M
 # size of particles
 rho = args.rho
-# threshold value
-threshold = 0.5
+rho = 300
+
+mantle = True
+
+# I dont want to pick a threshold above 0.5, also not with mantle. makes particles weirder
+if mantle:
+    mantle_threshold = 0.5
+    # threshold value
+    threshold = 0.5 * 1.05
+
+else:
+    threshold = 0.5
+
 # porosity division (rho' = rho/por_div). The effect of this is very dependent om M of course.
 # it does not scale linearly.
 por_div = 50
 # porosity threshold
 por_threshold = 0.2
 # add porosity or not
-porosity = True
+porosity = False
 rho2 = rho / por_div
 
-# volume threshold
-mantle_threshold = threshold * 0.9
-mantle = True
+
 save_particles = True
 # size range for saving particles
-part_low_lim = 500
+part_low_lim = 1000
 part_up_lim = 1500
 
 
@@ -65,7 +74,7 @@ def plot3d(arr, title=None, save=False):
     # this has a good idea on how to make the plotting look nice i think. not implemented yet
 
     # Plot the points
-    ax.scatter(x, y, z, color="orange", label="core")
+    ax.scatter(x, y, z, color="orange", label="core", alpha=1)
     if x2.size > 0:
         ax.scatter(x2, y2, z2, alpha=0.5, color="blue", label="mantle")
         ax.legend()
@@ -168,7 +177,7 @@ por_diff = no_poros - space  # this should leave 1 values where there is stuff r
 print("dipoles removed with porosity:", np.count_nonzero(por_diff))
 
 
-plot3d(space)
+# plot3d(space)
 
 # ---------------------------------------------------------------------------------- #
 # add a mantle
@@ -182,7 +191,7 @@ if mantle:
     # to mantle
     space[(GijkF > mantle_threshold) & (GijkF < threshold)] = 2
 
-    plot3d(space, title="mantle")
+    # plot3d(space, title="mantle")
 
 
 # ---------------------------------------------------------------------------------- #
@@ -294,7 +303,7 @@ def recombine_particle(particle):
         3d arr: recombined particle
     """
     # plot the particle to see it
-    plot3d(particle, title="before shift")
+    # plot3d(particle, title="before shift")
     x, y, z = np.where(particle == 1)
     x2, y2, z2 = np.where(particle == 2)
 
@@ -314,7 +323,7 @@ def recombine_particle(particle):
     arr = np.zeros((M, M, M))
     arr[x, y, z] = 1
     arr[x2, y2, z2] = 2
-    plot3d(arr, title="fixed?")
+    # plot3d(arr, title="fixed?")
 
     return arr
 
@@ -344,6 +353,7 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
     # write the particle to file
     file.write("# " + comments + "\n")
     if Ndom == 1:
+        file.write(f"Nmat={Ndom}\n")
         for coordinate in coordinates:
             x, y, z = coordinate
             file.write(f"{x} {y} {z} \n")
@@ -390,9 +400,25 @@ for particle in particles:
 
     total_dipoles_particles += np.count_nonzero(particle)
 
+    # first check volume fraction before checking size
+    # core_count = np.count_nonzero(particle == 1)
+    # mantle1_count = np.count_nonzero(particle == 2)
+    # volume_fraction = mantle1_count / core_count * 100
+    # print(
+    #     f"\nparticle {i}:\n \t core: {core_count}\n\t mantle: {mantle1_count}\n volume fraction: {volume_fraction:.4f}"
+    # )
+
     # these xyz are the total particle including mantle. this for checking size and split
     x, y, z = np.where(particle != 0)
     if part_low_lim < len(x) < part_up_lim:
+
+        # first check volume fraction before checking size
+        core_count = np.count_nonzero(particle == 1)
+        mantle1_count = np.count_nonzero(particle == 2)
+        volume_fraction = mantle1_count / core_count * 100
+        print(
+            f"\nparticle {i}:\n \t core: {core_count}\n\t mantle: {mantle1_count}\n volume fraction: {volume_fraction:.4}"
+        )
 
         # both 0 and max need to touch if the particle is split
         if (
@@ -402,7 +428,7 @@ for particle in particles:
         ):
 
             particle = recombine_particle(particle)
-
+        plot3d(particle)
         if save_particles:
             plot3d(particle, title="ACCEPTED", save=f"{newfoldername}/particle{i}")
 
