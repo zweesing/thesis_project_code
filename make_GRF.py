@@ -12,11 +12,11 @@ import os
 # this barely touches my 16 gb ram so it could be so so much bigger
 sys.setrecursionlimit(100000)
 
-foldername = "mantle_size"
+foldername = "dummy_particles_noporos"
 
 
 # for testing
-np.random.seed(10)
+# np.random.seed(10)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("M", help="number of points", default=128, type=int, nargs="?")
@@ -353,11 +353,15 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
     # write the particle to file
     file.write("# " + comments + "\n")
     if Ndom == 1:
+        file.write(f"# Volume = {len(coordinates)}\n")
         file.write(f"Nmat={Ndom}\n")
         for coordinate in coordinates:
             x, y, z = coordinate
             file.write(f"{x} {y} {z} \n")
     else:
+        file.write(f"# Volume1 = {len(coordinates[0])}\n")
+        file.write(f"# Volume2 = {len(coordinates[1])}\n")
+
         # if Ndom is more than one, coordinates should be one dimension higher
         file.write(f"Nmat={Ndom}\n")
         for domain in range(Ndom):
@@ -428,7 +432,7 @@ for particle in particles:
         ):
 
             particle = recombine_particle(particle)
-        plot3d(particle)
+        # plot3d(particle)
         if save_particles:
             plot3d(particle, title="ACCEPTED", save=f"{newfoldername}/particle{i}")
 

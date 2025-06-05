@@ -5,8 +5,9 @@ import numpy as np
 shape_name = "my_coated_sphere"
 # we need to write a shape file that has a bunch of x y z coordinates inside a sphere
 # amount of points is determined by the box size
-rad = [8, 4]
+rad = [16, 12]
 Ndom = 2
+box_size = 32
 
 
 def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
@@ -24,12 +25,13 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
             newfilename = filename + str(counter)
 
     file.write("# some comments about the shape i made\n")
+    file.write(f"# Volume1 = {len(coordinates[0])}\n# Volume2 = {len(coordinates[1])}")
     if Ndom == 1:
         for coordinate in coordinates:
             file.write(coordinate + "\n")
     else:
         # if Ndom is more than one, coordinates should be one dimension higher
-        file.write(f"Nmat={Ndom}\n")
+        file.write(f"\nNmat={Ndom}\n")
         for domain in range(Ndom):
             for coordinate in coordinates[domain]:
                 file.write(coordinate + " " + str(domain + 1) + "\n")
@@ -42,7 +44,7 @@ def generate_coordinates(rad=8):
     # I still need to test this with different radii
 
     # box size
-    size = size_x = size_y = size_z = 16
+    size = size_x = size_y = size_z = box_size
     halfsize = int(size / 2)
 
     # can only take 2 domains max rn, mostly testing

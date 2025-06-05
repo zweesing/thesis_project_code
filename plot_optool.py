@@ -1,4 +1,4 @@
-""" 
+"""
 file to read and plot cross section as a function of wavelength for both optool and adda, with conversions.
 runs optool first, generates
 """

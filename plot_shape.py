@@ -42,7 +42,7 @@ def plot_shape(shapefile):
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")
     for domain in range(Nmat):
-        ax.scatter(x_list[domain], y_list[domain], z_list[domain], alpha=0.7, s=100)
+        ax.scatter(x_list[domain], y_list[domain], z_list[domain], alpha=0.7, s=10)
 
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
