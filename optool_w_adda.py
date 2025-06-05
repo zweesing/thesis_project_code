@@ -50,6 +50,7 @@ Want to rewrite this into optool style output, so for all lambdas one file.
 import argparse
 import numpy as np
 import os
+import sys
 
 # if a value in in something other than CGS, multiply it by the conversion
 micron = 1e-4
@@ -115,9 +116,11 @@ if __name__ == "__main__":
     # TODO add description and such
     parser = argparse.ArgumentParser()
     # TODO this needs to be able to take a range, same as optool
-    parser.add_argument("-l", "--wavelength", help="wavelength in micron")
+    # possibly easiest to do with interpreting the input as a string?
+    parser.add_argument(
+        "-l", "--wavelength", default="1", nargs="*", help="wavelength in micron"
+    )
     # mass fraction is required here for separating mantle and core.
-    # TODO needs default
     parser.add_argument(
         "-c",
         "--core",
@@ -125,53 +128,56 @@ if __name__ == "__main__":
         nargs="?",
         default="pyr-mg70 0.87 c 0.13",
     )
-    # TODO needs default
     parser.add_argument(
         "-m",
         "--mantle",
-        help="material(s) and mass fractions of the core.",
+        help="material(s) and mass fractions of the mantle.",
         nargs="?",
         default=None,
     )
-    # TODO needs default
-    parser.add_argument("-p", "--porosity", help="porosity volume fraction")
+    parser.add_argument(
+        "-p",
+        "--porosity",
+        default=0,
+        type=float,
+        nargs="?",
+        help="porosity volume fraction",
+    )
     # TODO size range as in optool
     parser.add_argument(
-        "-a", "--size", help="size of the particle", default=1, type=float, nargs="?"
+        "-a",
+        "--size",
+        help="size of the particle in micron",
+        default=0.1,
+        type=float,
+        nargs="?",
     )
     parser.add_argument("-o", "--output", help="output folder", default="output")
 
     args = parser.parse_args()
 
     # unpack
-    lam_micron = args.wavelength
+    lam_range_micron = " ".join(
+        args.wavelength
+    )  # this needs to be a string with 1 or 3 arguments
+
     # materials and mass fractions should be able to be parsed into optool for mixing as is
     core_mat = args.core
+
     mantle_bool = bool(args.mantle)
+
     if mantle_bool:
         mantle_mat = args.mantle
+    # for testing, keeping this in. the argument works but this is better for now
+    mantle_mat = "h2o-w"
+    mantle_bool = True
+
     porosity = args.porosity
-    size = args.size
+    size_micron = args.size
     output_folder = "./" + args.output
 
-    # for testing
-    lam_micron = "1"
-    # mantle_mat = "h2o-w"
-    mantle_mat = "pyr-mg70 0.87 c 0.13"
-    mantle_bool = True
-    porosity = 0
-    size_micron = 0.1
     size = size_micron * micron
 
-    # do I need this?
-    # parser.add_argument(
-    #     "-dpl",
-    #     "--dpl",
-    #     help="dipoles per lambda, resolution parameter",
-    #     default=16,
-    #     type=int,
-    #     nargs="?",
-    # )
     # ------------------------------------------------------------------------------------- #
     # make output folder (idk if i want this or if i want it to save to the folder regardless of if its empty)
     # ------------------------------------------------------------------------------------- #
@@ -221,9 +227,9 @@ if __name__ == "__main__":
     # --> needs material and lambda
     # --> gives arrays of n,k
     # needs to run for both core and mantle
-    core_nk, lam_arr, rho_core = get_nk(lam_micron, core_mat)
+    core_nk, lam_arr, rho_core = get_nk(lam_range_micron, core_mat)
     if mantle_bool:
-        mantle_nk, _, rho_mantle = get_nk(lam_micron, mantle_mat)
+        mantle_nk, _, rho_mantle = get_nk(lam_range_micron, mantle_mat)
     # ------------------------------------------------------------------------------------- #
 
     # call adda
@@ -263,51 +269,64 @@ if __name__ == "__main__":
     # convert and calculate output for each realisation
     # ------------------------------------------------------------------------------------- #
 
-    # first trying for one realisation
-    ig = 0
-    adda_folders = os.listdir(f"{output_folder}/adda_runs_particle{ig}")
-    adda_folders.sort()
-    nlam = len(adda_folders)
+    # do this for each realisation and average
+    particle_masses = []
+    # Cext Qext Cabs Qabs
+    C_and_Q_arr = np.zeros((len(particles), len(lam_arr)))
 
-    # prepare arrays
-    Cexts = np.zeros(nlam)
-    Qext = np.zeros(nlam)
-    Cabs = np.zeros(nlam)
-    Qabs = np.zeros(nlam)
+    for ig in range(len(particles)):
+        print("ig: ", ig)
+        adda_folders = os.listdir(f"{output_folder}/adda_runs_particle{ig}")
+        adda_folders.sort()
+        nlam = len(adda_folders)
 
-    for i, a_folder in enumerate(adda_folders):
-        try:
-            f = open(f"{output_folder}/adda_runs_particle{ig}/{a_folder}/CrossSec", "r")
+        # prepare arrays
+        Cexts = np.zeros(nlam)
+        Qext = np.zeros(nlam)
+        Cabs = np.zeros(nlam)
+        Qabs = np.zeros(nlam)
 
-            lines = f.readlines()
-            Cexts[i] = float(lines[0].split()[-1]) * micron**2
-            Qext[i] = float(lines[1].split()[-1]) * micron**2
-            Cabs[i] = float(lines[2].split()[-1]) * micron**2
-            Qabs[i] = float(lines[3].split()[-1]) * micron**2
+        for i, a_folder in enumerate(adda_folders):
+            try:
+                f = open(
+                    f"{output_folder}/adda_runs_particle{ig}/{a_folder}/CrossSec", "r"
+                )
 
-            f.close()
-        except FileNotFoundError:
-            Cexts[i] = Qext[i] = Cabs[i] = Qabs[i] = np.nan
+                lines = f.readlines()
+                # these are per particle, all wavelengths
+                Cexts[i] = float(lines[0].split()[-1]) * micron**2
+                Qext[i] = float(lines[1].split()[-1]) * micron**2
+                Cabs[i] = float(lines[2].split()[-1]) * micron**2
+                Qabs[i] = float(lines[3].split()[-1]) * micron**2
 
-    # convert to kappas. we need dipole size from the log files
-    # all dipoles are the same size (for one particle) so we only need to read it once
-    f = open(f"{output_folder}/adda_runs_particle{ig}/{adda_folders[0]}/log")
-    line = f.readline()
-    while not line.startswith("Dipole size"):
+                f.close()
+            except FileNotFoundError:
+                Cexts[i] = Qext[i] = Cabs[i] = Qabs[i] = np.nan
+
+        # convert to kappas. we need dipole size from the log files
+        # all dipoles are the same size (for one particle) so we only need to read it once
+        f = open(f"{output_folder}/adda_runs_particle{ig}/{adda_folders[0]}/log")
         line = f.readline()
+        while not line.startswith("Dipole size"):
+            line = f.readline()
 
-    dipole_size_micron = float(line.split()[-2])  # micron
-    dipole_size = dipole_size_micron * micron
+        dipole_size_micron = float(line.split()[-2])  # micron
+        dipole_size = dipole_size_micron * micron
 
-    # dipoles are cuboids so the mass is amount of dipoles x dipole size^3 x rho
-    volume_core_dip, volume_mantle_dip = particle_volumes_dip[ig]
+        # dipoles are cuboids so the mass is amount of dipoles x dipole size^3 x rho
+        volume_core_dip, volume_mantle_dip = particle_volumes_dip[ig]
 
-    core_volume = volume_core_dip * dipole_size**3
-    mantle_volume = volume_mantle_dip * dipole_size**3
+        core_volume = volume_core_dip * dipole_size**3
+        mantle_volume = volume_mantle_dip * dipole_size**3
 
-    core_mass = core_volume * rho_core
-    mantle_mass = mantle_volume * rho_mantle
-    particle_mass = core_mass + mantle_mass
+        core_mass = core_volume * rho_core
+        mantle_mass = mantle_volume * rho_mantle
+        particle_mass = core_mass + mantle_mass
+        particle_masses.append(particle_mass)
+
+    # TODO these results need to be averaged somehow and saved
+
+    # TODO write this into output file
 
     print(
         f"\nvolume core: {core_volume} cm3\nvolume mantle: {mantle_volume} cm3\nvolume total: {core_volume+mantle_volume} cm3"
@@ -319,5 +338,5 @@ if __name__ == "__main__":
     k_abs = Cabs[ig] / particle_mass
     print("kappa abs=", k_abs, " cm2/g\nkappa sca=", k_ext - k_abs, " cm2/g")
     # ------------------------------------------------------------------------------------- #
-    # plot for now?
+    # write output files
     # ------------------------------------------------------------------------------------- #
