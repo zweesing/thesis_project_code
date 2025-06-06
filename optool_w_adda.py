@@ -111,6 +111,11 @@ def get_nk(wavelength, material):
     return nk_arr, lamarr, rho
 
 
+# def get_avg(Carr, Marr):
+#     Csum = 0
+#     for i in range(len(Carr)):
+#         Csum += Carr[i]*
+
 if __name__ == "__main__":
 
     # TODO add description and such
@@ -270,21 +275,17 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------------------------- #
 
     # do this for each realisation and average
-    particle_masses = []
-    # Cext Qext Cabs Qabs
-    C_and_Q_arr = np.zeros((len(particles), len(lam_arr)))
+    npart = len(particles)
+    nlam = len(lam_arr)
+    particle_masses = np.zeros(npart)
+    # for each lambda [Cext Qext Cabs Qabs], for each particle
+    # so the order is arr[particle, lambda, C/Q]
+    C_and_Q_arr = np.zeros((npart, nlam, 4))
 
     for ig in range(len(particles)):
         print("ig: ", ig)
         adda_folders = os.listdir(f"{output_folder}/adda_runs_particle{ig}")
         adda_folders.sort()
-        nlam = len(adda_folders)
-
-        # prepare arrays
-        Cexts = np.zeros(nlam)
-        Qext = np.zeros(nlam)
-        Cabs = np.zeros(nlam)
-        Qabs = np.zeros(nlam)
 
         for i, a_folder in enumerate(adda_folders):
             try:
@@ -293,15 +294,15 @@ if __name__ == "__main__":
                 )
 
                 lines = f.readlines()
-                # these are per particle, all wavelengths
-                Cexts[i] = float(lines[0].split()[-1]) * micron**2
-                Qext[i] = float(lines[1].split()[-1]) * micron**2
-                Cabs[i] = float(lines[2].split()[-1]) * micron**2
-                Qabs[i] = float(lines[3].split()[-1]) * micron**2
+
+                C_and_Q_arr[ig, i, 0] = float(lines[0].split()[-1]) * micron**2
+                C_and_Q_arr[ig, i, 1] = float(lines[1].split()[-1]) * micron**2
+                C_and_Q_arr[ig, i, 2] = float(lines[2].split()[-1]) * micron**2
+                C_and_Q_arr[ig, i, 3] = float(lines[3].split()[-1]) * micron**2
 
                 f.close()
             except FileNotFoundError:
-                Cexts[i] = Qext[i] = Cabs[i] = Qabs[i] = np.nan
+                C_and_Q_arr[ig, i, :] = np.array([np.nan, np.nan, np.nan, np.nan])
 
         # convert to kappas. we need dipole size from the log files
         # all dipoles are the same size (for one particle) so we only need to read it once
@@ -322,11 +323,30 @@ if __name__ == "__main__":
         core_mass = core_volume * rho_core
         mantle_mass = mantle_volume * rho_mantle
         particle_mass = core_mass + mantle_mass
-        particle_masses.append(particle_mass)
+        particle_masses[ig] = particle_mass
 
-    # TODO these results need to be averaged somehow and saved
+    # average results, weighted by mass
+    # for each wavelength, four values [Cext Qext Cabs Qabs kext kabs]
+    results_arr = np.zeros((nlam, 6))
+    for i in nlam:
+        Cext = C_and_Q_arr[:, i, 0]
+        Cabs = C_and_Q_arr[:, i, 2]
+        # Cext
+        results_arr[i, 0] = (Cext * particle_masses).sum() / particle_masses.sum()
+        # Qext becasue of orientational averaging,this is just C / 'spherical cross section'
+        results_arr[i, 1] = results_arr[i, 0] / (np.pi * size**2)
 
-    # TODO write this into output file
+        # Cabs
+        results_arr[i, 2] = (Cabs * particle_masses).sum() / particle_masses.sum()
+        # Qabs
+        results_arr[i, 3] = results_arr[i, 2] / (np.pi * size**2)
+
+        # kext (the particle weight of the weighted average cancels the weight of the kappa conversion)
+        results_arr[i, 4] = Cext.sum() / particle_masses.sum()
+        # kabs
+        results_arr[i, 5] = Cabs.sum() / particle_masses.sum()
+
+    # TODO average matrix. first need to read it in. convert the conversion
 
     print(
         f"\nvolume core: {core_volume} cm3\nvolume mantle: {mantle_volume} cm3\nvolume total: {core_volume+mantle_volume} cm3"
@@ -334,9 +354,7 @@ if __name__ == "__main__":
     print(f"densities: {rho_core, rho_mantle}")
     print("\nmass: ", particle_mass, " gram")
 
-    k_ext = Cexts[ig] / particle_mass
-    k_abs = Cabs[ig] / particle_mass
-    print("kappa abs=", k_abs, " cm2/g\nkappa sca=", k_ext - k_abs, " cm2/g")
+    # print("kappa abs=", k_abs, " cm2/g\nkappa sca=", k_ext - k_abs, " cm2/g")
     # ------------------------------------------------------------------------------------- #
     # write output files
     # ------------------------------------------------------------------------------------- #
