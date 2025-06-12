@@ -111,11 +111,6 @@ def get_nk(wavelength, material):
     return nk_arr, lamarr, rho
 
 
-# def get_avg(Carr, Marr):
-#     Csum = 0
-#     for i in range(len(Carr)):
-#         Csum += Carr[i]*
-
 if __name__ == "__main__":
 
     # TODO add description and such
@@ -223,6 +218,7 @@ if __name__ == "__main__":
             dipoles = int(line.split()[-1])
             volumes_dipoles.append(dipoles)
             line = file.readline()
+        file.close()
 
         particle_volumes_dip.append(volumes_dipoles)
     # ------------------------------------------------------------------------------------- #
@@ -236,8 +232,9 @@ if __name__ == "__main__":
     if mantle_bool:
         mantle_nk, _, rho_mantle = get_nk(lam_range_micron, mantle_mat)
     # ------------------------------------------------------------------------------------- #
-
     # call adda
+    # ------------------------------------------------------------------------------------- #
+
     # --> needs size (equivalent radius), wavelength, nk, geom file
     # --> gives matrix and crosssection
 
@@ -265,51 +262,40 @@ if __name__ == "__main__":
             run_folder = (
                 current_folder + "/run" + str(i).zfill(4) + "lam" + str(lam_micron)
             )
-            print(run_folder)
             os.system(
                 f"adda -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder}"
             )
 
     # ------------------------------------------------------------------------------------- #
-    # convert and calculate output for each realisation
+    # read in dipole size to calculate mass
+    # read in adda C and Q outputs into 3d array for each particle, each wavelength, 4 results
+    # read in matrices + apply RADMC convention immediately
     # ------------------------------------------------------------------------------------- #
 
     # do this for each realisation and average
     npart = len(particles)
     nlam = len(lam_arr)
     particle_masses = np.zeros(npart)
+    # we have a 4x4 matrix, for each wavelength, for each particle
+    matrices_RADMC_arr = np.zeros((npart, nlam, 181, 4, 4))
+    matrices_unnorm_arr = np.zeros((npart, nlam, 181, 4, 4))  # just for testing
+
     # for each lambda [Cext Qext Cabs Qabs], for each particle
     # so the order is arr[particle, lambda, C/Q]
     C_and_Q_arr = np.zeros((npart, nlam, 4))
 
-    for ig in range(len(particles)):
-        print("ig: ", ig)
+    for ig in range(npart):
+
         adda_folders = os.listdir(f"{output_folder}/adda_runs_particle{ig}")
         adda_folders.sort()
 
-        for i, a_folder in enumerate(adda_folders):
-            try:
-                f = open(
-                    f"{output_folder}/adda_runs_particle{ig}/{a_folder}/CrossSec", "r"
-                )
-
-                lines = f.readlines()
-
-                C_and_Q_arr[ig, i, 0] = float(lines[0].split()[-1]) * micron**2
-                C_and_Q_arr[ig, i, 1] = float(lines[1].split()[-1]) * micron**2
-                C_and_Q_arr[ig, i, 2] = float(lines[2].split()[-1]) * micron**2
-                C_and_Q_arr[ig, i, 3] = float(lines[3].split()[-1]) * micron**2
-
-                f.close()
-            except FileNotFoundError:
-                C_and_Q_arr[ig, i, :] = np.array([np.nan, np.nan, np.nan, np.nan])
-
-        # convert to kappas. we need dipole size from the log files
+        # calculate particle mass to convert to opacity
         # all dipoles are the same size (for one particle) so we only need to read it once
         f = open(f"{output_folder}/adda_runs_particle{ig}/{adda_folders[0]}/log")
         line = f.readline()
         while not line.startswith("Dipole size"):
             line = f.readline()
+        f.close()
 
         dipole_size_micron = float(line.split()[-2])  # micron
         dipole_size = dipole_size_micron * micron
@@ -325,36 +311,160 @@ if __name__ == "__main__":
         particle_mass = core_mass + mantle_mass
         particle_masses[ig] = particle_mass
 
+        for il, a_folder in enumerate(adda_folders):
+            try:
+                f = open(
+                    f"{output_folder}/adda_runs_particle{ig}/{a_folder}/CrossSec", "r"
+                )
+
+                lines = f.readlines()
+
+                C_and_Q_arr[ig, il, 0] = float(lines[0].split()[-1]) * micron**2
+                C_and_Q_arr[ig, il, 1] = float(lines[1].split()[-1]) * micron**2
+                C_and_Q_arr[ig, il, 2] = float(lines[2].split()[-1]) * micron**2
+                C_and_Q_arr[ig, il, 3] = float(lines[3].split()[-1]) * micron**2
+
+                f.close()
+            except FileNotFoundError:
+                C_and_Q_arr[ig, il, :] = np.array([np.nan, np.nan, np.nan, np.nan])
+
+            # matrix
+            f = open(f"{output_folder}/adda_runs_particle{ig}/{a_folder}/mueller", "r")
+            f.readline()  # columnnames
+            matrices = np.zeros((181, 4, 4))
+            line = f.readline()
+
+            while line:
+                line_split = line.split()
+                # this is the angle but it also works as an index
+                ia = int(float(line_split[0]))
+
+                # remove the angle
+                line_split.pop(0)
+
+                # make numbers.
+                elements = [float(el) for el in line_split]
+                # reshape and save the matrix
+                matrix = np.array(elements).reshape((4, 4))
+
+                matrices[ia] = matrix
+
+                line = f.readline()
+
+            f.close()
+            # apply RADMC convention and save
+            # first, apply RADMC convention, which is lamda^2 /(4 pi^2 m)
+            # matrices_RADMC_arr[ig, il] = (
+            #     matrices * lam_arr[il] ** 2 / (4 * np.pi**2 * particle_mass)
+            # )
+            matrices_unnorm_arr[ig, il] = matrices
+            # sanity check. 1,1-element of all angles should add up to kappa_sca/(4pi)
+            # print(
+            #     "1,1-element sum (for all 360 angles?), /4pi:",
+            #     (
+            #         matrices_RADMC_arr[ig, il, :, 0, 0].sum()
+            #         # + matrices_RADMC_arr[ig, il, :, 0, 0][1:-1].sum()
+            #     ),
+            # )
+
+    # ------------------------------------------------------------------------------------- #
     # average results, weighted by mass
-    # for each wavelength, four values [Cext Qext Cabs Qabs kext kabs]
+    # ------------------------------------------------------------------------------------- #
+
+    # for each wavelength, six values [Cext Qext Cabs Qabs kext kabs]
     results_arr = np.zeros((nlam, 6))
-    for i in nlam:
-        Cext = C_and_Q_arr[:, i, 0]
-        Cabs = C_and_Q_arr[:, i, 2]
-        # Cext
-        results_arr[i, 0] = (Cext * particle_masses).sum() / particle_masses.sum()
+    for i in range(nlam):
+        Cext_arr = C_and_Q_arr[:, i, 0]  # array for all particles
+        Cabs_arr = C_and_Q_arr[:, i, 2]
+
+        Cext = (Cext_arr * particle_masses).sum() / particle_masses.sum()
         # Qext becasue of orientational averaging,this is just C / 'spherical cross section'
-        results_arr[i, 1] = results_arr[i, 0] / (np.pi * size**2)
+        Qext = Cext / (np.pi * size**2)
 
-        # Cabs
-        results_arr[i, 2] = (Cabs * particle_masses).sum() / particle_masses.sum()
-        # Qabs
-        results_arr[i, 3] = results_arr[i, 2] / (np.pi * size**2)
+        Cabs = (Cabs_arr * particle_masses).sum() / particle_masses.sum()
+        Qabs = Cabs / (np.pi * size**2)
 
-        # kext (the particle weight of the weighted average cancels the weight of the kappa conversion)
-        results_arr[i, 4] = Cext.sum() / particle_masses.sum()
-        # kabs
-        results_arr[i, 5] = Cabs.sum() / particle_masses.sum()
+        # the particle weight of the weighted average cancels the weight of the kappa conversion
+        kext = Cext_arr.sum() / particle_masses.sum()
+        kabs = Cabs_arr.sum() / particle_masses.sum()
+        print("ksca/4pi:", (kext - kabs) / (4 * np.pi))
 
-    # TODO average matrix. first need to read it in. convert the conversion
+        results_arr[i] = np.array([Cext, Qext, Cabs, Qabs, kext, kabs])
 
-    print(
-        f"\nvolume core: {core_volume} cm3\nvolume mantle: {mantle_volume} cm3\nvolume total: {core_volume+mantle_volume} cm3"
+    # matrix
+    # try to get hovenier and test it
+    matrices_unnorm_arr[0, 0, :, :, :] = matrices_unnorm_arr[0, 0, :, :, :] * (
+        lam_arr[0] ** 2 / (np.pi * (Cext - Cabs))
     )
-    print(f"densities: {rho_core, rho_mantle}")
-    print("\nmass: ", particle_mass, " gram")
+    print("sum of 1,1 elements", matrices_unnorm_arr[0, 0, :, 0, 0].sum())
+    print(matrices_unnorm_arr)
+    print("\n masses:")
 
-    # print("kappa abs=", k_abs, " cm2/g\nkappa sca=", k_ext - k_abs, " cm2/g")
+    for p in particle_masses:
+
+        print(p)
     # ------------------------------------------------------------------------------------- #
     # write output files
     # ------------------------------------------------------------------------------------- #
+    output_filename = output_folder + "results.dat"
+    wfile = open(output_filename, "w")
+    # header
+    wfile.write(
+        "#============================================================================"
+    )
+    # credits
+    wfile.write("# computed by me yay")
+
+    # parameters. make nice with spacing
+    wfile.write("# Parameters:")
+    # lambda
+    wfile.write(
+        f"#   lmin [um]= {lam_arr[0]:10.3f} lmax [um]= {lam_arr[-1]:10.3f}  nlam= {nlam:4.3g}     nang=   181"
+    )
+    # other stuff idk yet
+    wfile.write(
+        f"#   porosity =      {args.porosity:5.3f}    a [um]= {size_micron:10.3f}"
+    )
+
+    # composition
+    wfile.write("# Composition:")
+    #  Where   mfrac  rho   Material
+    #  -----   -----  ----  -----------------------------------------------------
+    #  core    1.000  0.92  h2o-w
+    #  - - -   - - -  -  -  - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    #  grain   1.000  0.92  mixture of  1 materials
+    # ----------------------------------------------------------------------------
+    wfile.write("#  Where   mfrac  rho   Material")
+    wfile.write(
+        "#  -----   -----  ----  -----------------------------------------------------"
+    )
+    # TODO figure these out. one line for each core material and a mixture result for
+    # core and mantle
+    cmatstring = ""
+    wfile.write(f"#  core    {0:5.3f}  {0:3.2f}  {cmatstring}")
+    wfile.write(
+        "#  -----   -----  ----  -----------------------------------------------------"
+    )
+    mmatstring = ""
+    wfile.write(f"#  mantle  {0:5.3f}  {0:3.2f}  {mmatstring}")
+
+    wfile.write(
+        "#  -----   -----  ----  -----------------------------------------------------"
+    )
+    wfile.write(
+        "#============================================================================"
+    )
+    # description of the data section
+    wfile.write(
+        "#============================================================================"
+    )
+    # opacites etc
+    # there is some information that is needed here. optool does format number
+    # and number of lambdas
+    wfile.write()
+    for i in range(nlam):
+        pass
+        # write the lambda grid and the opacities
+        # this means 15 wide with 5 decimals after the dot
+        # wfile.write(' %15.5e %15.5e %15.5e %15.5e\n' % (s.lam[i],s.kabs[0,i],s.ksca[0,i],s.gsca[0,i]))
+    wfile.close()
