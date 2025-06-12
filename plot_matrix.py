@@ -162,20 +162,22 @@ if __name__ == "__main__":
         thetas, matrices = read_matrix(args.muellerfile)
 
     # array of chosen matrix elements
-    element_arr = matrices[:, element[0] - 1, element[1] - 1]
+    # element_arr = matrices[:, element[0] - 1, element[1] - 1]
+    elarr = matrices[:, 0, 0]
+    print(elarr.sum() * 2)
 
-    fig = plt.figure()
-    plt.plot(thetas, element_arr)
+    # fig = plt.figure()
+    # plt.plot(thetas, element_arr)
 
-    if args.muellerfile.endswith(".dat"):
-        plt.title(f"optool mueller matrix element s{element[0]}{element[1]}")
-    else:
-        plt.title(f"adda mueller matrix element s{element[0]}{element[1]}")
+    # if args.muellerfile.endswith(".dat"):
+    #     plt.title(f"optool mueller matrix element s{element[0]}{element[1]}")
+    # else:
+    #     plt.title(f"adda mueller matrix element s{element[0]}{element[1]}")
 
-    plt.xlabel("theta (degrees)")
-    plt.ylabel(f"s{element[0]}{element[1]}")
+    # plt.xlabel("theta (degrees)")
+    # plt.ylabel(f"s{element[0]}{element[1]}")
+    # # plt.xlim(0, 180)
     # plt.xlim(0, 180)
-    plt.xlim(0, 180)
-    plt.grid()
-    plt.show()
+    # plt.grid()
+    # plt.show()
     # plt.savefig(f"runs/GRF_test/plots_avg/mueller{args.element}GRFavg")
