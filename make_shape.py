@@ -2,10 +2,10 @@ import numpy as np
 
 # so this sucks a little bit but. it  can make a shape with two domains.
 # it first makes two coordinate lists, and then writes those
-shape_name = "my_coated_sphere"
+shape_name = "my_small_coated_sphere"
 # we need to write a shape file that has a bunch of x y z coordinates inside a sphere
 # amount of points is determined by the box size
-rad = [16, 12]
+rad = [10, 8]
 Ndom = 2
 box_size = 32
 

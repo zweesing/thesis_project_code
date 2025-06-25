@@ -11,26 +11,40 @@ import os
 # this is a little scary but my particles are getting bigger
 # this barely touches my 16 gb ram so it could be so so much bigger
 sys.setrecursionlimit(100000)
+por = 3
+foldername = f"std_params_p{por}_por"
+# make output folder
+if os.path.isdir(foldername):
+    nofolder = True
+    counter = 1
+    newfoldername = foldername + str(counter)
 
-foldername = "dummy_particles_noporos"
+    while nofolder:
+        try:
+            os.mkdir(newfoldername)
+            nofolder = False
+        except FileExistsError:
+            counter += 1
+            newfoldername = foldername + str(counter)
+else:
+    newfoldername = foldername
+    os.mkdir(newfoldername)
 
+foldername = newfoldername
 
-# for testing
-# np.random.seed(10)
-
-parser = argparse.ArgumentParser()
-parser.add_argument("M", help="number of points", default=128, type=int, nargs="?")
-parser.add_argument("rho", help="size", default=100, type=float, nargs="?")
-args = parser.parse_args()
+# parser = argparse.ArgumentParser()
+# parser.add_argument("M", help="number of points", default=128, type=int, nargs="?")
+# parser.add_argument("rho", help="size", default=100, type=float, nargs="?")
+# args = parser.parse_args()
 
 # ---------------------------------------------------------------------------------- #
 # variables
 # ---------------------------------------------------------------------------------- #
-# np.random.seed(0)
+# np.random.seed(1)
+
 # number of points
-M = args.M
+M = 128
 # size of particles
-rho = args.rho
 rho = 300
 
 mantle = True
@@ -39,18 +53,19 @@ mantle = True
 if mantle:
     mantle_threshold = 0.5
     # threshold value
-    threshold = 0.5 * 1.05
+    threshold = mantle_threshold * 1.1
 
 else:
     threshold = 0.5
 
 # porosity division (rho' = rho/por_div). The effect of this is very dependent om M of course.
 # it does not scale linearly.
-por_div = 50
+por_div = 62.5
 # porosity threshold
-por_threshold = 0.2
+por_threshold = 0.1
+por_threshold = por / 10
 # add porosity or not
-porosity = False
+porosity = True
 rho2 = rho / por_div
 
 
@@ -58,6 +73,15 @@ save_particles = True
 # size range for saving particles
 part_low_lim = 1000
 part_up_lim = 1500
+
+with open(f"{newfoldername}/parameters.txt", "w") as f:
+    f.write(f"M {M}\n")
+    f.write(f"rho {rho}\n")
+    f.write(f"threshold {threshold}\n")
+    f.write(f"mantle_threshold {mantle_threshold}\n")
+    f.write(f"por_div {por_div}\n")
+    f.write(f"por_threshold {por_threshold}\n")
+    f.write(f"save_lim {part_low_lim}-{part_up_lim}\n")
 
 
 # ---------------------------------------------------------------------------------- #
@@ -99,14 +123,16 @@ def plot3d(arr, title=None, save=False):
         plt.show()
 
 
-def plot_slice(arr):
+def plot_slice(arr, title="slice"):
 
-    x, y = np.where(arr == 1)
+    # x, y = np.where(arr == 1)
 
     fig = plt.figure()
 
-    plt.scatter(x, y)
-    plt.xlim(plt.ylim())
+    # plt.scatter(x, y)
+    plt.imshow(arr, cmap="hot", interpolation="none")
+    # plt.xlim(plt.ylim())
+    plt.title(title)
     plt.show()
 
 
@@ -157,7 +183,18 @@ GijkF2 = GijkF2 / np.max(GijkF2)
 # all points where GijF is > 0.5 are inside the particle.
 # so all points in space will be evaluated besed on the value from Gijkf
 space = np.zeros((M, M, M))
-space[GijkF > threshold] = 1
+space[np.abs(GijkF) > threshold] = 1
+
+# ---------------------------------------------------------------------------------- #
+# add a mantle
+# same idea as normal particle but theres another threshold such that the mantle
+# is x% of the volume
+# ---------------------------------------------------------------------------------- #
+
+volume_particles = np.count_nonzero(space)
+if mantle:
+    space[(np.abs(GijkF) > mantle_threshold) & (np.abs(GijkF) < threshold)] = 2
+
 
 # ---------------------------------------------------------------------------------- #
 # add porosity
@@ -168,37 +205,19 @@ space[GijkF > threshold] = 1
 no_poros = copy.copy(space)
 
 if porosity:
-    space[GijkF2 > por_threshold] = 0
+    space[np.abs(GijkF2) > por_threshold] = 0
+
+# plot_slice(space[int(M / 2)], title="with mantl and porosity")
 
 print("done.")
 print("number of dipoles:", np.count_nonzero(space))
 
 por_diff = no_poros - space  # this should leave 1 values where there is stuff removed
 print("dipoles removed with porosity:", np.count_nonzero(por_diff))
-
-
+por_frac = np.count_nonzero(por_diff) / np.count_nonzero(no_poros)
+print(f"porosity fraction:{por_frac:.3f}\n")
 # plot3d(space)
 
-# ---------------------------------------------------------------------------------- #
-# add a mantle
-# same idea as normal particle but theres another threshold such that the mantle
-# is x% of the volume
-# ---------------------------------------------------------------------------------- #
-
-volume_particles = np.count_nonzero(space)
-if mantle:
-    # currently this is laying the mantle over instead of converting the outide
-    # to mantle
-    space[(GijkF > mantle_threshold) & (GijkF < threshold)] = 2
-
-    # plot3d(space, title="mantle")
-
-
-# ---------------------------------------------------------------------------------- #
-# add porosity
-# NOTE whether the mantle is added before porosity or after determines if
-# the mantle is porous
-# ---------------------------------------------------------------------------------- #
 
 # ---------------------------------------------------------------------------------- #
 # extract the particles from here
@@ -352,6 +371,10 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
 
     # write the particle to file
     file.write("# " + comments + "\n")
+    if porosity:
+        file.write(f"# porosity_frac = {por_frac:.3f}\n")
+    else:
+        file.write("# no porosity\n")
     if Ndom == 1:
         file.write(f"# Volume = {len(coordinates)}\n")
         file.write(f"Nmat={Ndom}\n")
@@ -372,24 +395,6 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
     file.close()
 
 
-# make a folder (very elaborate sorry)
-if os.path.isdir(foldername):
-    nofolder = True
-    counter = 1
-    newfoldername = foldername + str(counter)
-
-    while nofolder:
-        try:
-            os.mkdir(newfoldername)
-            nofolder = False
-        except FileExistsError:
-            counter += 1
-            newfoldername = foldername + str(counter)
-else:
-    newfoldername = foldername
-    os.mkdir(newfoldername)
-
-
 # save particles one by one
 # have a filter for particle size?
 if mantle:
@@ -406,10 +411,10 @@ for particle in particles:
 
     # first check volume fraction before checking size
     # core_count = np.count_nonzero(particle == 1)
-    # mantle1_count = np.count_nonzero(particle == 2)
-    # volume_fraction = mantle1_count / core_count * 100
+    # mantle_count = np.count_nonzero(particle == 2)
+    # volume_fraction = mantle_count / core_count * 100
     # print(
-    #     f"\nparticle {i}:\n \t core: {core_count}\n\t mantle: {mantle1_count}\n volume fraction: {volume_fraction:.4f}"
+    #     f"\nparticle {i}:\n \t core: {core_count}\n\t mantle: {mantle_count}\n volume fraction: {volume_fraction:.4f}"
     # )
 
     # these xyz are the total particle including mantle. this for checking size and split
@@ -418,10 +423,10 @@ for particle in particles:
 
         # first check volume fraction before checking size
         core_count = np.count_nonzero(particle == 1)
-        mantle1_count = np.count_nonzero(particle == 2)
-        volume_fraction = mantle1_count / core_count * 100
+        mantle_count = np.count_nonzero(particle == 2)
+        volume_fraction = mantle_count / (core_count + mantle_count)
         print(
-            f"\nparticle {i}:\n \t core: {core_count}\n\t mantle: {mantle1_count}\n volume fraction: {volume_fraction:.4}"
+            f"\nparticle {i}:\n \tdipoles: {(core_count + mantle_count)}\n \tmantle volume fraction: {volume_fraction:.4}"
         )
 
         # both 0 and max need to touch if the particle is split
@@ -455,28 +460,13 @@ for particle in particles:
 
     i += 1
 if save_particles:
-    # save the total files
-    if porosity:
-        plot3d(space, save=f"{newfoldername}/added_poros")
-    plot3d(no_poros, save=f"{newfoldername}/no_poros")
+    # save the total cube plot
+    plot3d(space, save=f"{newfoldername}/full")
+    # plot3d(no_poros, save=f"{newfoldername}/no_poros")
 
-print(f"saving particles in {newfoldername}")
+print(f"\nsaving particles in {newfoldername}")
 print("number of particles saved:", particles_saved)
 
-print(
-    f"dipole sanity check: \n    total from extracted particles={total_dipoles_particles}\n    total from espace={np.count_nonzero(space)} "
-)
-# ---------------------------------------------------------------------------------- #
-# we can add a mantle
-# same idea as normal particle but theres another threshold such that the mantle
-# is 30% of the volume (at least thats how they do it)
-# ---------------------------------------------------------------------------------- #
-volume_particles = np.count_nonzero(space)
-# not sure how to do this, you'd have to run it to see how much the threshold should be maybe
-# unless i can find a way to understand what volume my parameters will produce. It would be too
-# time consuming to do it twice.
-
-
-# ---------------------------------------------------------------------------------- #
-# rewrite geom files so they are connected
-# ---------------------------------------------------------------------------------- #
+# print(
+#     f"dipole sanity check: \n    total from extracted particles={total_dipoles_particles}\n    total from espace={np.count_nonzero(space)} "
+# )
