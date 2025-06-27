@@ -10,9 +10,11 @@ import os
 
 # this is a little scary but my particles are getting bigger
 # this barely touches my 16 gb ram so it could be so so much bigger
-sys.setrecursionlimit(100000)
-por = 3
-foldername = f"std_params_p{por}_por"
+sys.setrecursionlimit(1000000)
+por = 2
+man = 1.03
+foldername = f"smaller_mant_p{por}_por"
+# foldername = "testing_header"
 # make output folder
 if os.path.isdir(foldername):
     nofolder = True
@@ -52,8 +54,8 @@ mantle = True
 # I dont want to pick a threshold above 0.5, also not with mantle. makes particles weirder
 if mantle:
     mantle_threshold = 0.5
-    # threshold value
-    threshold = mantle_threshold * 1.1
+    # threshold value. higher number means more mantle.
+    threshold = mantle_threshold * man
 
 else:
     threshold = 0.5
@@ -205,20 +207,22 @@ if mantle:
 no_poros = copy.copy(space)
 
 if porosity:
-    space[np.abs(GijkF2) > por_threshold] = 0
+    # space[np.abs(GijkF2) > por_threshold] = 0
+    space[(np.abs(GijkF2) > por_threshold) & ((space == 1) | (space == 2))] = 3
+
 
 # plot_slice(space[int(M / 2)], title="with mantl and porosity")
 
 print("done.")
-print("number of dipoles:", np.count_nonzero(space))
+print("number of dipoles:", np.count_nonzero(space == 1) + np.count_nonzero(space == 2))
 
-por_diff = no_poros - space  # this should leave 1 values where there is stuff removed
+por_diff = no_poros - space  # this should leave -1 values where there is stuff removed
 print("dipoles removed with porosity:", np.count_nonzero(por_diff))
 por_frac = np.count_nonzero(por_diff) / np.count_nonzero(no_poros)
 print(f"porosity fraction:{por_frac:.3f}\n")
 # plot3d(space)
 
-
+# sys.exit()
 # ---------------------------------------------------------------------------------- #
 # extract the particles from here
 # ---------------------------------------------------------------------------------- #
@@ -352,29 +356,26 @@ def recombine_particle(particle):
 # ---------------------------------------------------------------------------------- #
 
 
-def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
-    # make a file for the particle with increasing particle number
-    # idk why im doing this so complicatedly
-    # nofile = True
-    # counter = 0
-    # newfilename = filename + str(counter)
+def write_shape_file(filename, coordinates, Ndom=1, por_frac=0, comments=None):
+    """Write an ADDA input shape file for a particle. the volumes of the core
+    (and mantle if relevant) are saved, as well as porosity fraction. Any aditional
+    comments can be added by specifying as an argument.
 
-    # while nofile:
-    #     try:
-    #         file = open(f"{newfilename}.geom", "x")
-    #         nofile = False
-    #     except FileExistsError:
-    #         counter += 1
-    #         newfilename = filename + str(counter)
+    Args:
+        filename (str): name of file to write
+        coordinates (list or arr): list with (x,y,z) tuples. If there are 2 domains, must be list with two lists with (xyz) tuples.
+        Ndom (int, optional): Number of domains. Defaults to 1.
+        comments (str, optional): aditional comments to add to header. Defaults to None.
+    """
 
     file = open(f"{filename}.geom", "x")
 
     # write the particle to file
-    file.write("# " + comments + "\n")
-    if porosity:
-        file.write(f"# porosity_frac = {por_frac:.3f}\n")
-    else:
-        file.write("# no porosity\n")
+    if comments:
+        file.write("# " + comments + "\n")
+
+    file.write(f"# porosity_frac = {por_frac:.3f}\n")
+
     if Ndom == 1:
         file.write(f"# Volume = {len(coordinates)}\n")
         file.write(f"Nmat={Ndom}\n")
@@ -407,7 +408,7 @@ total_dipoles_particles = 0
 particles_saved = 0
 for particle in particles:
 
-    total_dipoles_particles += np.count_nonzero(particle)
+    total_dipoles_particles += np.count_nonzero(particle < 3)
 
     # first check volume fraction before checking size
     # core_count = np.count_nonzero(particle == 1)
@@ -420,13 +421,20 @@ for particle in particles:
     # these xyz are the total particle including mantle. this for checking size and split
     x, y, z = np.where(particle != 0)
     if part_low_lim < len(x) < part_up_lim:
+        # remove porosity now
+        porosity_count = np.count_nonzero(particle == 3)
+        particle[particle == 3] = 0
 
-        # first check volume fraction before checking size
         core_count = np.count_nonzero(particle == 1)
         mantle_count = np.count_nonzero(particle == 2)
-        volume_fraction = mantle_count / (core_count + mantle_count)
+
+        mantle_vol_frac = mantle_count / (core_count + mantle_count)
+        porosity_vol_frac = porosity_count / (
+            mantle_count + core_count + porosity_count
+        )
+
         print(
-            f"\nparticle {i}:\n \tdipoles: {(core_count + mantle_count)}\n \tmantle volume fraction: {volume_fraction:.4}"
+            f"\nparticle {i}:\n \tdipoles: {(core_count + mantle_count)}\n \tmantle volume fraction: {mantle_vol_frac:.4}"
         )
 
         # both 0 and max need to touch if the particle is split
@@ -452,7 +460,9 @@ for particle in particles:
 
             coordinates = zip(x, y, z)
 
-        write_shape_file(f"{newfoldername}/GRFpart{i}", coordinates, Ndom)
+        write_shape_file(
+            f"{newfoldername}/GRFpart{i}", coordinates, Ndom, porosity_vol_frac
+        )
         particles_saved += 1
     elif save_particles:
         pass
