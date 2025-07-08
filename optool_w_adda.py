@@ -4,7 +4,7 @@ inputs:
 
     lambda or lambda range
 
-    size of particles (or range)
+    size of particles
 
     volume fraction porosity
 
@@ -51,9 +51,12 @@ import argparse
 import numpy as np
 import os
 import sys
+import time
+import datetime
 
 # if a value in in something other than CGS, multiply it by the conversion
 micron = 1e-4
+particle_folder = "GRF_particles_wd"
 
 
 def get_nk(wavelength, material):
@@ -70,7 +73,7 @@ def get_nk(wavelength, material):
     # TODO output folder needs to be a temp
     # possibly specify a single size so optool doesnt calculate a range (optimisation)
     # optool bug, does not write to correct folder
-    os.system(f"cd {output_folder} && optool -c {material} -l {wavelength} -mie -w ")
+    os.system(f"cd {output_folder} && optool -c {material} -l {wavelength} -mie -w -q")
 
     # read in data
     # TODO i dont need all this information so this can be shorter I think
@@ -169,8 +172,7 @@ if __name__ == "__main__":
     if mantle_bool:
         mantle_mat = args.mantle
     # for testing, keeping this in. the argument works but this is better for now
-    mantle_mat = "h2o-w"
-    mantle_bool = True
+    # mantle_mat = "h2o-w"
 
     porosity = args.porosity
     size_micron = args.size
@@ -201,8 +203,8 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------------------------- #
     # find matching GRF particles TODO
     # ------------------------------------------------------------------------------------- #
-    particles = os.listdir("GRF_particles")
-    particles = ["GRF_particles/" + x for x in particles]
+    particles = os.listdir(particle_folder)
+    particles = [f"{particle_folder}/" + x for x in particles]
     # in [core, mantle] format. in #dipoles units
     particle_volumes_dip = []
     # get the volumes. first line is general description and
@@ -232,12 +234,15 @@ if __name__ == "__main__":
     if mantle_bool:
         mantle_nk, _, rho_mantle = get_nk(lam_range_micron, mantle_mat)
     lam_arr_micron = lam_arr / micron
+    print()
     # ------------------------------------------------------------------------------------- #
     # call adda
     # ------------------------------------------------------------------------------------- #
 
-    # --> needs size (equivalent radius), wavelength, nk, geom file
-    # --> gives matrix and crosssection
+    npart = len(particles)
+    nlam = len(lam_arr)
+
+    start_time = time.time()
 
     # run per wavelength for whole particle. if multiple realisations, run for those
     # we also need the volumes
@@ -250,7 +255,8 @@ if __name__ == "__main__":
         # os.system(f"cp avg_params.dat {current_folder}/avg_params.dat")
         # for wavelength grid, needs to run multiple times
         for i, lam in enumerate(lam_arr):
-
+            # status update?
+            sys.stdout.write(f"\rparticle {ig+1:>3}/{npart}  lambda {i+1:>3}/{nlam}")
             nc, kc = core_nk[i]
             if mantle_bool:
                 nm, km = mantle_nk[i]
@@ -264,8 +270,13 @@ if __name__ == "__main__":
                 current_folder + "/run" + str(i).zfill(4) + "lam" + str(lam_micron)
             )
             os.system(
-                f"adda -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder}"
+                f"adda -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder} > dump/adda_term_output{ig}_{i}.txt"
             )
+    print()
+    time_passed = time.time() - start_time
+
+    print(f"Time: {datetime.timedelta(seconds =time_passed )}")
+    print()
 
     # ------------------------------------------------------------------------------------- #
     # read in dipole size to calculate mass
@@ -274,8 +285,7 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------------------------- #
 
     # do this for each realisation and average
-    npart = len(particles)
-    nlam = len(lam_arr)
+
     particle_masses = np.zeros(npart)
     particle_rhos = np.zeros(npart)
     # we have a 4x4 matrix, for each wavelength, for each particle
@@ -286,6 +296,8 @@ if __name__ == "__main__":
     # so the order is arr[particle, lambda, C/Q]
     C_and_Q_arr = np.zeros((npart, nlam, 4))
 
+    # these are saved for the output writing
+    volumes_core_mantle = np.zeros((npart, 2))
     for ig in range(npart):
 
         adda_folders = os.listdir(f"{output_folder}/adda_runs_particle{ig}")
@@ -303,17 +315,30 @@ if __name__ == "__main__":
         dipole_size = dipole_size_micron * micron
 
         # dipoles are cuboids so the mass is amount of dipoles x dipole size^3 x rho
-        volume_core_dip, volume_mantle_dip = particle_volumes_dip[ig]
+        if mantle_bool:
+            volume_core_dip, volume_mantle_dip = particle_volumes_dip[ig]
 
-        core_volume = volume_core_dip * dipole_size**3
-        mantle_volume = volume_mantle_dip * dipole_size**3
+            core_volume = volume_core_dip * dipole_size**3
+            mantle_volume = volume_mantle_dip * dipole_size**3
 
-        core_mass = core_volume * rho_core
-        mantle_mass = mantle_volume * rho_mantle
+            core_mass = core_volume * rho_core
+            mantle_mass = mantle_volume * rho_mantle
+
+        else:
+            volume_core_dip = particle_volumes_dip[ig][0]
+
+            core_volume = volume_core_dip * dipole_size**3
+
+            core_mass = core_volume * rho_core
+            mantle_mass = mantle_volume = 0
+
         particle_mass = core_mass + mantle_mass
+
         particle_masses[ig] = particle_mass
         # TODO this needs to be a weighted average
         particle_rhos[ig] = particle_mass / (core_volume + mantle_volume)
+
+        volumes_core_mantle[ig] = np.array([core_volume, mantle_volume])
 
         for il, a_folder in enumerate(adda_folders):
             try:
@@ -361,15 +386,6 @@ if __name__ == "__main__":
             matrices_RADMC_arr[ig, il] = (
                 matrices * lam_arr[il] ** 2 / (4 * np.pi**2 * particle_mass)
             )
-            # matrices_unnorm_arr[ig, il] = matrices
-            # sanity check. 1,1-element of all angles should add up to kappa_sca/(4pi)
-            # print(
-            #     "1,1-element sum:",
-            #     (
-            #         matrices_RADMC_arr[ig, il, :, 0, 0].sum()
-            #         # + matrices_RADMC_arr[ig, il, :, 0, 0][1:-1].sum()
-            #     ),
-            # )
 
     # ------------------------------------------------------------------------------------- #
     # average results, weighted by mass
@@ -391,24 +407,28 @@ if __name__ == "__main__":
         # the particle weight of the weighted average cancels the weight of the kappa conversion
         kext = Cext_arr.sum() / particle_masses.sum()
         kabs = Cabs_arr.sum() / particle_masses.sum()
-        print("ksca:", (kext - kabs))
 
         results_arr[i] = np.array([Cext, Qext, Cabs, Qabs, kext, kabs])
 
-    # matrix
-    # try to get hovenier and test it
-    # matrices_unnorm_arr[0, 0, :, :, :] = matrices_unnorm_arr[0, 0, :, :, :] * (
-    #     lam_arr[0] ** 2 / (np.pi * (Cext - Cabs))
-    # )
-    # print("sum of 1,1 elements", matrices_unnorm_arr[0, 0, :, 0, 0].sum())
-    # print(matrices_unnorm_arr)
-    print("\n masses:")
+    # matrix. gonna do this the slow way
+    # first weigh by particle mass
+    for ip in range(npart):
+        matrices_RADMC_arr[ip] = matrices_RADMC_arr[ip] * particle_masses[ip]
+    # sum for averaging and divide my total mass
+    matrices_RADMC_averaged = np.sum(matrices_RADMC_arr, axis=0) / particle_masses.sum()
 
-    for p in particle_masses:
-
-        print(p)
-    print("\n[Cext Qext Cabs Qabs kext kabs]")
-    print("results for first lambda:", results_arr[0], "\n")
+    # volumes
+    volume_fracs = volumes_core_mantle[:, 1] / (
+        volumes_core_mantle[:, 0] + volumes_core_mantle[:, 1]
+    )
+    for ip in range(npart):
+        volume_fracs[ip] = volume_fracs[ip] * particle_masses[ip]
+    volume_frac = volume_fracs.sum() / particle_masses.sum()
+    mass_frac = (
+        rho_core
+        * (1 - volume_frac)
+        / (rho_core * (1 - volume_frac) + rho_mantle * (volume_frac))
+    )
     # ------------------------------------------------------------------------------------- #
     # write output files
     # ------------------------------------------------------------------------------------- #
@@ -421,38 +441,30 @@ if __name__ == "__main__":
     # credits
     wfile.write("# computed by me yay\n")
 
-    # parameters. make nice with spacing
     wfile.write("# Parameters:\n")
-    # lambda
     wfile.write(
-        f"#   lmin [um]= {lam_arr[0]:10.3f} lmax [um]= {lam_arr[-1]:10.3f}  nlam= {nlam:4.3g}     nang=   181\n"
+        f"#   lmin [um]= {lam_arr_micron[0]:10.3f} lmax [um]= {lam_arr_micron[-1]:10.3f}  nlam= {nlam:4.3g}     nang=   181\n"
     )
-    # other stuff idk yet
+    # TODO comute actual porosity
     wfile.write(
         f"#   porosity =      {args.porosity:5.3f}    a [um]= {size_micron:10.3f}\n"
     )
 
     # composition
     wfile.write("# Composition:\n")
-    #  Where   mfrac  rho   Material
-    #  -----   -----  ----  -----------------------------------------------------
-    #  core    1.000  0.92  h2o-w
-    #  - - -   - - -  -  -  - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    #  grain   1.000  0.92  mixture of  1 materials
-    # ----------------------------------------------------------------------------
-    wfile.write("#  Where   mfrac  rho   Material\n")
+
+    wfile.write("#  Where   vfrac  mfrac  rho   Material\n")
     wfile.write(
-        "#  -----   -----  ----  -----------------------------------------------------\n"
+        "#  -----   -----  ----  -----  -----------------------------------------------------\n"
     )
-    # TODO figure these out. one line for each core material and a mixture result for
-    # core and mantle
-    cmatstring = core_mat
-    wfile.write(f"#  core    {0:5.3f}  {rho_core:3.2f}  {cmatstring}\n")
+
     wfile.write(
-        "#  -----   -----  ----  -----------------------------------------------------\n"
+        f"#  core    {1-volume_frac:5.3f} {mass_frac:5.3f} {rho_core:3.2f}  {core_mat}\n"
     )
-    mmatstring = mantle_mat
-    wfile.write(f"#  mantle  {0:5.3f}  {rho_mantle:3.2f}  {mmatstring}\n")
+    if mantle_bool:
+        wfile.write(
+            f"#  mantle  {volume_frac:5.3f} {1-mass_frac:5.3f} {rho_mantle:3.2f}  {mantle_mat}\n"
+        )
 
     wfile.write(
         "#  -----   -----  ----  -----------------------------------------------------\n"
@@ -460,24 +472,61 @@ if __name__ == "__main__":
     wfile.write(
         "#============================================================================\n"
     )
-    # description of the data section
-    wfile.write("         lambda            kext            kabs\n")
+    # description of the data section. TODO needs to also include the matrices expl.
+    wfile.write("# format of output file\n")
+    # lam(1)    kabs(1)    ksca(1)    g(1)        ! um, cm^2/g, cm^2/g, none
+    #    ...
+    #    lam(nlam) kabs(nlam) ksca(nlam) g(nlam)
+    wfile.write(
+        "#    lambda(1)    Cext(1)    Qext(1)    Cabs(1)    Qabs(1)    kext(1)    kabs(1)\n"
+    )
+    wfile.write("#    ...\n")
+    wfile.write(
+        "#    lambda(nlam) Cext(nlam) Qext(nlam) Cabs(nlam) Qabs(nlam) kext(nlam) kabs(nlam)\n#\n"
+    )
+
+    wfile.write("#    lambda(1)\n")
+    wfile.write(
+        "#    ang(1)   s11 s12 s13 s14 s21 s22 s23 s24 s31 s32 s33 s34 s41 s42 s43 s44\n#    ...\n"
+    )
+    wfile.write(
+        "#    ang(181) s11 s12 s13 s14 s21 s22 s23 s24 s31 s32 s33 s34 s41 s42 s43 s44"
+    )
+    wfile.write("\n#\n#    ...\n#\n")
+    wfile.write("#    lambda(nlam)\n")
+    wfile.write(
+        "#    ang(1)   s11 s12 s13 s14 s21 s22 s23 s24 s31 s32 s33 s34 s41 s42 s43 s44\n#    ...\n"
+    )
+    wfile.write(
+        "#    ang(181) s11 s12 s13 s14 s21 s22 s23 s24 s31 s32 s33 s34 s41 s42 s43 s44\n"
+    )
     wfile.write(
         "#============================================================================\n"
     )
     # opacites etc
     # there is some information that is needed here. optool does format number
     # and number of lambdas
-    # wfile.write()
+    # [Cext Qext Cabs Qabs kext kabs]
 
     for i in range(nlam):
         pass
         # write the lambda grid and the opacities
-        # this means 15 wide with 5 decimals after the dot
+        # this means 15 wide with 5 decimals after the dot. should line up with header.
 
         wfile.write(
-            f"{lam_arr_micron[i]:15.5e} {results_arr[i][4]:15.5e} {results_arr[i][5]:15.5e}\n"
+            f"{lam_arr_micron[i]:15.5e} {results_arr[i][0]:15.5e} {results_arr[i][1]:15.5e} {results_arr[i][2]:15.5e} {results_arr[i][3]:15.5e} {results_arr[i][4]:15.5e} {results_arr[i][5]:15.5e}\n"
         )
+
+    # matrix
+
+    for il, matrices in enumerate(matrices_RADMC_averaged):
+        wfile.write("\n")
+        wfile.write(f"{lam_arr_micron[il]}\n")
+        for ia, matrix in enumerate(matrices):
+            wfile.write(
+                f"{ia} {matrix[0,0]} {matrix[0,1]} {matrix[0,2]} {matrix[0,3]} {matrix[1,0]} {matrix[1,1]} {matrix[1,2]} {matrix[1,3]} {matrix[2,0]} {matrix[2,1]} {matrix[2,2]} {matrix[2,3]} {matrix[3,0]} {matrix[3,1]} {matrix[3,2]} {matrix[3,3]}\n"
+            )
+
     wfile.close()
     print("written output file to", output_filename)
 
@@ -490,6 +539,6 @@ if __name__ == "__main__":
     wfile.write(f"{nlam} {size_micron} {particle_rhos[0]}\n")
     for i in range(nlam):
         # am now writing Qext
-        wfile.write(f"{lam_arr_micron[i]:.15e} {results_arr[i][1]:.15e}\n")
+        wfile.write(f"{lam_arr_micron[i]:.15e} {results_arr[i][3]:.15e}\n")
 
     wfile.close()
