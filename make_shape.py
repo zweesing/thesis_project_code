@@ -1,16 +1,11 @@
 import numpy as np
 
-# so this sucks a little bit but. it  can make a shape with two domains.
-# it first makes two coordinate lists, and then writes those
-shape_name = "my_small_coated_sphere"
+
 # we need to write a shape file that has a bunch of x y z coordinates inside a sphere
 # amount of points is determined by the box size
-rad = [10, 8]
-Ndom = 2
-box_size = 32
 
 
-def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
+def write_shape_file(filename, coordinates, Ndom=1, comments=""):
     # idk why im doing this so complicatedly
     nofile = True
     counter = 0
@@ -22,16 +17,25 @@ def write_shape_file(filename, coordinates, Ndom=1, comments="some comment"):
             nofile = False
         except FileExistsError:
             counter += 1
-            newfilename = filename + str(counter)
+            newfilename = filename + f"{counter:03d}"
 
-    file.write("# some comments about the shape i made\n")
-    file.write(f"# Volume1 = {len(coordinates[0])}\n# Volume2 = {len(coordinates[1])}")
+    if comments:
+        file.write(f"# {comments}\n")
+
     if Ndom == 1:
+        file.write(f"# Volume1 = {len(coordinates)}\n")
+
         for coordinate in coordinates:
             file.write(coordinate + "\n")
     else:
+        file.write(
+            f"# Volume1 = {len(coordinates[0])}\n# Volume2 = {len(coordinates[1])}\n"
+        )
+        file.write(
+            f"# mantle volume frac. {len(coordinates[1])/(len(coordinates[1])+ len(coordinates[0]))} \n"
+        )
         # if Ndom is more than one, coordinates should be one dimension higher
-        file.write(f"\nNmat={Ndom}\n")
+        file.write(f"Nmat={Ndom}\n")
         for domain in range(Ndom):
             for coordinate in coordinates[domain]:
                 file.write(coordinate + " " + str(domain + 1) + "\n")
@@ -44,8 +48,6 @@ def generate_coordinates(rad=8):
     # I still need to test this with different radii
 
     # box size
-    size = size_x = size_y = size_z = box_size
-    halfsize = int(size / 2)
 
     # can only take 2 domains max rn, mostly testing
     if type(rad) == list:
@@ -55,7 +57,7 @@ def generate_coordinates(rad=8):
     else:
         r1 = rad
         coordinates = []
-
+    size = r1 * 2
     offset = (
         -r1 + 0.5
     )  # this +0.5 puts the center on a halfpoint and makes the generation match addas method
@@ -102,6 +104,14 @@ def generate_coordinates(rad=8):
     return coordinates
 
 
-coordinates = generate_coordinates(rad)
-filename = write_shape_file(shape_name, coordinates, Ndom)
-print("made shape file " + filename + ".geom")
+if __name__ == "__main__":
+    shape_name = "no_coat_sphere"
+    for x in range(1, 15):
+        # rad is [full size, core size]
+        rad = 1 * x
+        Ndom = 1
+        coordinates = generate_coordinates(rad)
+        filename = write_shape_file(
+            shape_name, coordinates, Ndom, comments=f"rad {rad}"
+        )
+        print("made shape file " + filename + ".geom")
