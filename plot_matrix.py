@@ -164,7 +164,7 @@ if __name__ == "__main__":
     # array of chosen matrix elements
     # element_arr = matrices[:, element[0] - 1, element[1] - 1]
     elarr = matrices[:, 0, 0]
-    print(elarr.sum() * 2)
+    # print(elarr.sum())
 
     # fig = plt.figure()
     # plt.plot(thetas, element_arr)

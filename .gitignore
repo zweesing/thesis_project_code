@@ -1,16 +1,18 @@
 # folders
 runs/
-ahhhh/
-recombination_test/
-size_range_test/
-mantle_test/
-mantle_write_test/
+GRF_particles*/
+generating_particles/
+particle_dirs_wrong/
+dump/
+test_particles/
 # any optool extentions
 *.dat
 *.lnk
+*.inp
 # adda extensions
 *.geom
-
+# images
+*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

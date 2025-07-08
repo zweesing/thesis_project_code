@@ -9,10 +9,9 @@ import sys
 import os
 
 # this is a little scary but my particles are getting bigger
-# this barely touches my 16 gb ram so it could be so so much bigger
 sys.setrecursionlimit(1000000)
 por = 2
-man = 1.03
+man = 1.05
 foldername = f"smaller_mant_p{por}_por"
 # foldername = "testing_header"
 # make output folder
@@ -220,7 +219,7 @@ por_diff = no_poros - space  # this should leave -1 values where there is stuff 
 print("dipoles removed with porosity:", np.count_nonzero(por_diff))
 por_frac = np.count_nonzero(por_diff) / np.count_nonzero(no_poros)
 print(f"porosity fraction:{por_frac:.3f}\n")
-# plot3d(space)
+plot3d(space)
 
 # sys.exit()
 # ---------------------------------------------------------------------------------- #
