@@ -1,5 +1,5 @@
-"""read in particles that have been deemed acceptable and sort them on porosity value
-and mantle volume  percentage"""
+"""read in particles recursively from input_dir and sort them on porosity
+and mantle volume percentage in subdirectories in output_dir"""
 
 import os
 from pathlib import Path
@@ -10,8 +10,8 @@ import sys
 output_dir = "GRF_particles"
 
 # input files
-
-particle_files = os.listdir("generating_particles")
+input_dir = "generating_particles"
+particle_files = os.listdir(input_dir)
 
 i = 1
 mantle_frac_list = []
