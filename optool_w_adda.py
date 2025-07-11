@@ -128,7 +128,7 @@ if __name__ == "__main__":
         "-c",
         "--core",
         help="material(s) and mass fractions of the core.",
-        nargs="?",
+        nargs="*",
         default="pyr-mg70 0.87 c 0.13",
     )
     parser.add_argument(
@@ -136,7 +136,7 @@ if __name__ == "__main__":
         "--mantle",
         help="material(s) and mass fractions of the mantle.",
         nargs="?",
-        default=None,
+        default="h2o",
     )
     parser.add_argument(
         "-p",
@@ -180,13 +180,15 @@ if __name__ == "__main__":
 
     size = size_micron * micron
 
+    print(f"cmat: {core_mat}, lambda: {lam_range_micron}, a: {size_micron}")
+
     # ------------------------------------------------------------------------------------- #
     # make output folder (idk if i want this or if i want it to save to the folder regardless of if its empty)
     # ------------------------------------------------------------------------------------- #
     if os.path.isdir(output_folder):
         nofolder = True
         counter = 1
-        newfoldername = output_folder + str(counter)
+        newfoldername = output_folder + f"{counter:03d}"
 
         while nofolder:
             try:
@@ -196,7 +198,7 @@ if __name__ == "__main__":
 
             except FileExistsError:
                 counter += 1
-                newfoldername = output_folder + str(counter)
+                newfoldername = output_folder + f"{counter:03d}"
     else:
         os.mkdir(output_folder)
 
@@ -436,7 +438,7 @@ if __name__ == "__main__":
     wfile = open(output_filename, "w")
     # header
     wfile.write(
-        "#============================================================================\n"
+        "#===================================================================================\n"
     )
     # credits
     wfile.write("# computed by me yay\n")
@@ -455,22 +457,22 @@ if __name__ == "__main__":
 
     wfile.write("#  Where   vfrac  mfrac  rho   Material\n")
     wfile.write(
-        "#  -----   -----  ----  -----  -----------------------------------------------------\n"
+        "#  -----   -----  -----  ----  -----------------------------------------------------\n"
     )
 
     wfile.write(
-        f"#  core    {1-volume_frac:5.3f} {mass_frac:5.3f} {rho_core:3.2f}  {core_mat}\n"
+        f"#  core    {1-volume_frac:5.3f}  {mass_frac:5.3f}  {rho_core:3.2f}  {core_mat}\n"
     )
     if mantle_bool:
         wfile.write(
-            f"#  mantle  {volume_frac:5.3f} {1-mass_frac:5.3f} {rho_mantle:3.2f}  {mantle_mat}\n"
+            f"#  mantle  {volume_frac:5.3f}  {1-mass_frac:5.3f}  {rho_mantle:3.2f}  {mantle_mat}\n"
         )
 
     wfile.write(
-        "#  -----   -----  ----  -----------------------------------------------------\n"
+        "#  -----   -----  -----  ----  -----------------------------------------------------\n"
     )
     wfile.write(
-        "#============================================================================\n"
+        "#===================================================================================\n"
     )
     # description of the data section. TODO needs to also include the matrices expl.
     wfile.write("# format of output file\n")
@@ -501,7 +503,7 @@ if __name__ == "__main__":
         "#    ang(181) s11 s12 s13 s14 s21 s22 s23 s24 s31 s32 s33 s34 s41 s42 s43 s44\n"
     )
     wfile.write(
-        "#============================================================================\n"
+        "#===================================================================================\n"
     )
     # opacites etc
     # there is some information that is needed here. optool does format number
