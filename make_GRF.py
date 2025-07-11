@@ -3,16 +3,28 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
-import time
 import copy
 import sys
 import os
 
+por = 3
+man = 1.05
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-p", "--porosity", type=float)
+parser.add_argument("-m", "--mantle", type=float)
+args = parser.parse_args()
+por = args.porosity
+man = args.mantle
+
 # this is a little scary but my particles are getting bigger
 sys.setrecursionlimit(1000000)
-por = 2
-man = 1.05
-foldername = f"smaller_mant_p{por}_por"
+
+
+print(por, man)
+
+foldername = f"generating_particles/man{man}_por{por}_"
 # foldername = "testing_header"
 # make output folder
 if os.path.isdir(foldername):
@@ -46,9 +58,13 @@ foldername = newfoldername
 # number of points
 M = 128
 # size of particles
-rho = 300
+rho = 400
 
-mantle = True
+if man != 0:
+    mantle = True
+else:
+    mantle = False
+print("mantle:", mantle)
 
 # I dont want to pick a threshold above 0.5, also not with mantle. makes particles weirder
 if mantle:
@@ -58,22 +74,33 @@ if mantle:
 
 else:
     threshold = 0.5
+    mantle_threshold = None
 
-# porosity division (rho' = rho/por_div). The effect of this is very dependent om M of course.
-# it does not scale linearly.
-por_div = 62.5
-# porosity threshold
-por_threshold = 0.1
-por_threshold = por / 10
 # add porosity or not
-porosity = True
-rho2 = rho / por_div
+if por != 0:
+    porosity = True
+    # porosity division (rho' = rho/por_div). The effect of this is very dependent om M of course.
+    # it does not scale linearly.
+    por_div = 62.5
+    # porosity threshold
+    # por_threshold = 0.1
+    por_threshold = por / 10
+
+    rho2 = rho / por_div
+else:
+    porosity = False
+    # porosity division (rho' = rho/por_div). The effect of this is very dependent om M of course.
+    # it does not scale linearly.
+    por_div = None
+    # porosity threshold
+    # por_threshold = 0.1
+    por_threshold = None
 
 
 save_particles = True
 # size range for saving particles
-part_low_lim = 1000
-part_up_lim = 1500
+part_low_lim = 2000
+part_up_lim = 3500
 
 with open(f"{newfoldername}/parameters.txt", "w") as f:
     f.write(f"M {M}\n")
@@ -171,15 +198,18 @@ for i in range(M):
             y = 2.0 * j / M - 1.0
             z = 2.0 * k / M - 1.0
             Gijk[i, j, k] = Rijk[i, j, k] * np.exp(-(x**2 + y**2 + z**2) * rho)
-            Gijk2[i, j, k] = Rijk2[i, j, k] * np.exp(-(x**2 + y**2 + z**2) * rho2)
+            if porosity:
+                Gijk2[i, j, k] = Rijk2[i, j, k] * np.exp(-(x**2 + y**2 + z**2) * rho2)
 
 # transform back into space space
 GijkF = np.fft.ifftn(Gijk)
-GijkF2 = np.fft.ifftn(Gijk2)
+if porosity:
+    GijkF2 = np.fft.ifftn(Gijk2)
 
 # normalise
 GijkF = GijkF / np.max(GijkF)
-GijkF2 = GijkF2 / np.max(GijkF2)
+if porosity:
+    GijkF2 = GijkF2 / np.max(GijkF2)
 
 # all points where GijF is > 0.5 are inside the particle.
 # so all points in space will be evaluated besed on the value from Gijkf
@@ -219,7 +249,7 @@ por_diff = no_poros - space  # this should leave -1 values where there is stuff 
 print("dipoles removed with porosity:", np.count_nonzero(por_diff))
 por_frac = np.count_nonzero(por_diff) / np.count_nonzero(no_poros)
 print(f"porosity fraction:{por_frac:.3f}\n")
-plot3d(space)
+# plot3d(space)
 
 # sys.exit()
 # ---------------------------------------------------------------------------------- #
@@ -328,23 +358,29 @@ def recombine_particle(particle):
     # plot3d(particle, title="before shift")
     x, y, z = np.where(particle == 1)
     x2, y2, z2 = np.where(particle == 2)
+    x3, y3, z3 = np.where(particle == 3)
 
     # shift necessary directions
-    while 0 in x or 0 in x2:
+    while 0 in x or 0 in x2 or 0 in x3:
         x -= 1
         x2 -= 1
+        x3 -= 1
 
-    while 0 in y or 0 in y2:
+    while 0 in y or 0 in y2 or 0 in y3:
         y -= 1
         y2 -= 1
+        y3 -= 1
 
-    while 0 in z or 0 in z2:
+    while 0 in z or 0 in z2 or 0 in z3:
         z -= 1
         z2 -= 1
+        z3 -= 1
 
     arr = np.zeros((M, M, M))
     arr[x, y, z] = 1
     arr[x2, y2, z2] = 2
+    arr[x3, y3, z3] = 3
+
     # plot3d(arr, title="fixed?")
 
     return arr
@@ -355,7 +391,9 @@ def recombine_particle(particle):
 # ---------------------------------------------------------------------------------- #
 
 
-def write_shape_file(filename, coordinates, Ndom=1, por_frac=0, comments=None):
+def write_shape_file(
+    filename, coordinates, Ndom=1, por_frac=0, mantle_frac=0, comments=None
+):
     """Write an ADDA input shape file for a particle. the volumes of the core
     (and mantle if relevant) are saved, as well as porosity fraction. Any aditional
     comments can be added by specifying as an argument.
@@ -376,7 +414,7 @@ def write_shape_file(filename, coordinates, Ndom=1, por_frac=0, comments=None):
     file.write(f"# porosity_frac = {por_frac:.3f}\n")
 
     if Ndom == 1:
-        file.write(f"# Volume = {len(coordinates)}\n")
+        file.write(f"# Volume1 = {len(coordinates)}\n")
         file.write(f"Nmat={Ndom}\n")
         for coordinate in coordinates:
             x, y, z = coordinate
@@ -384,6 +422,7 @@ def write_shape_file(filename, coordinates, Ndom=1, por_frac=0, comments=None):
     else:
         file.write(f"# Volume1 = {len(coordinates[0])}\n")
         file.write(f"# Volume2 = {len(coordinates[1])}\n")
+        file.write(f"# mantle_frac = {mantle_frac:.3f}\n")
 
         # if Ndom is more than one, coordinates should be one dimension higher
         file.write(f"Nmat={Ndom}\n")
@@ -417,15 +456,16 @@ for particle in particles:
     #     f"\nparticle {i}:\n \t core: {core_count}\n\t mantle: {mantle_count}\n volume fraction: {volume_fraction:.4f}"
     # )
 
-    # these xyz are the total particle including mantle. this for checking size and split
+    # these xyz are the total particle including mantle and porosity. this for checking split particles
     x, y, z = np.where(particle != 0)
+    # this is to check the size of the particle with porosity removed, for the threshold
+    # x_pr, _, _ = np.where((particle == 1) | (particle == 2))
+
     if part_low_lim < len(x) < part_up_lim:
-        # remove porosity now
-        porosity_count = np.count_nonzero(particle == 3)
-        particle[particle == 3] = 0
 
         core_count = np.count_nonzero(particle == 1)
         mantle_count = np.count_nonzero(particle == 2)
+        porosity_count = np.count_nonzero(particle == 3)
 
         mantle_vol_frac = mantle_count / (core_count + mantle_count)
         porosity_vol_frac = porosity_count / (
@@ -444,7 +484,10 @@ for particle in particles:
         ):
 
             particle = recombine_particle(particle)
-        # plot3d(particle)
+
+        # remove porosity
+        particle[particle == 3] = 0
+
         if save_particles:
             plot3d(particle, title="ACCEPTED", save=f"{newfoldername}/particle{i}")
 
@@ -457,10 +500,14 @@ for particle in particles:
             coordinates = [core_coords, mantle_coords]
         else:
 
-            coordinates = zip(x, y, z)
+            coordinates = core_coords = np.stack((x, y, z), axis=-1)
 
         write_shape_file(
-            f"{newfoldername}/GRFpart{i}", coordinates, Ndom, porosity_vol_frac
+            f"{newfoldername}/GRFpart{i}",
+            coordinates,
+            Ndom,
+            porosity_vol_frac,
+            mantle_vol_frac,
         )
         particles_saved += 1
     elif save_particles:
@@ -468,10 +515,10 @@ for particle in particles:
         # plot3d(particle, title="REJECTED", save=f"{newfoldername}/particle{i}")
 
     i += 1
-if save_particles:
-    # save the total cube plot
-    plot3d(space, save=f"{newfoldername}/full")
-    # plot3d(no_poros, save=f"{newfoldername}/no_poros")
+# if save_particles:
+#     # save the total cube plot
+#     plot3d(space, save=f"{newfoldername}/full")
+# plot3d(no_poros, save=f"{newfoldername}/no_poros")
 
 print(f"\nsaving particles in {newfoldername}")
 print("number of particles saved:", particles_saved)
