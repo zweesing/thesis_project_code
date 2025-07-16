@@ -105,11 +105,11 @@ def generate_coordinates(rad=8):
 
 
 if __name__ == "__main__":
-    shape_name = "no_coat_sphere"
-    for x in range(1, 15):
+    shape_name = "small_coated_sphere"
+    for x in range(1, 9):
         # rad is [full size, core size]
-        rad = 1 * x
-        Ndom = 1
+        rad = [5 * x, 4 * x]
+        Ndom = 2
         coordinates = generate_coordinates(rad)
         filename = write_shape_file(
             shape_name, coordinates, Ndom, comments=f"rad {rad}"

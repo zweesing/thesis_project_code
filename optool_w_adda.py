@@ -1,48 +1,37 @@
-"""One big mofo to combine everything I have so far
+"""
 
 inputs:
 
     lambda or lambda range
 
-    size of particles
+    size of particle
 
     volume fraction porosity
 
-    mantle and core materials mass fraction -> gives mantle volume fraction
+    mantle and core materials and mass fraction -> gives mantle volume fraction
 
     n realisations (foraveraging)
-    n rotations (for averaging)
 
 
 
-    optional:
+    optional (TODO?):
         normalisation for the matrix
+        n rotations (for averaging)
 
 outputs:
-    kappa_scat and kappa_abs
-    scattering matrix
-
-    would be nice if this looks like the optool output
+    all scattering quantities and scattering matrix in one file
 
 
-program needs to do:
-if GRF:
-    generate GRF for specified resolution needed (depending on wavelength)
-    turn GRF file into adda geometry file
 
-make optool write the files for n and k. (needs the material for this and the wavelength(grid))
-for both the mantle and the core (mix per domain if multiple materials)
 
-rho for the material will be in these files. Calculate which particles are needed by getting a dipole ratio
-to match with the porosity fraction to select particle(s)
-
-read in n and k for the wavelength grid
-
-run adda with the shapefile(s).
-
-this gives a matrix and a crosssection (and a log file). want to convert crosssection into kappa.
-Want to rewrite this into optool style output, so for all lambdas one file.
-
+TODO fixes still needed:
+    think there should be more particles in that high mantle fraction range maybe.
+    results.dat needs to show missing mass fractions or something. now its comfusing
+    exit if optool does not understand the material input
+    write descriptions for arguments
+    0 mantle particles must not get mantle particles
+    update results.dat to show amount of particles used. possibly aslo a file with
+        the actual average of the particles used, and how it compares to the requested parameters
 
 
 """
@@ -53,13 +42,16 @@ import os
 import sys
 import time
 import datetime
+from pathlib import Path
+import matplotlib.pyplot as plt
+import shutil
 
 # if a value in in something other than CGS, multiply it by the conversion
 micron = 1e-4
-particle_folder = "GRF_particles_wd"
+particle_folder = "GRF_particles_all"
 
 
-def get_nk(wavelength, material):
+def get_nk(wavelength, material, output_folder):
     """get refractive index for specified material(s) from optool. Material can be
     the entire string including the mass fractions, in which case optool will mix them.
 
@@ -114,16 +106,92 @@ def get_nk(wavelength, material):
     return nk_arr, lamarr, rho
 
 
+def select_particles(
+    central_point, output_dir, closest_num, particles_dir=particle_folder, plot=False
+):
+    mantle_frac_list = []
+    por_frac_list = []
+    name_list = []
+    # extract all information from all particles
+    for particle_file in Path(particles_dir).rglob("*.geom"):
+
+        rf = open(particle_file)
+        # read in relevant header data
+        mantle_volume = 0  # in case theres no mantle
+        line = rf.readline()
+        while line.startswith("#"):
+            if line.startswith("# porosity_frac"):
+                porosity_frac = float(line.split()[-1])
+            elif line.startswith("# Volume1"):
+                core_volume = float(line.split()[-1])
+            elif line.startswith("# Volume2"):
+                mantle_volume = float(line.split()[-1])
+            line = rf.readline()
+        rf.close()
+
+        mantle_frac = mantle_volume / (mantle_volume + core_volume)
+        mantle_frac_list.append(mantle_frac)
+        por_frac_list.append(porosity_frac)
+        name_list.append(str(particle_file).split("/")[-1])
+
+    # calculate distance
+    mantle_fracs = np.array(mantle_frac_list)
+    por_fracs = np.array(por_frac_list)
+    coordinates = np.stack((mantle_fracs, por_fracs), axis=-1)
+    distances_vec = coordinates - central_point
+    distances = np.linalg.norm(distances_vec, axis=1)
+
+    # create (distance, name) tuples for sorting.
+    dist_name_tups = []
+    for i in range(len(distances)):
+        # also add coordinates for plotting (can be removed if i want)
+        dist_name_tups.append((distances[i], name_list[i], coordinates[i]))
+
+    # select closes num
+    selection = sorted(dist_name_tups)[:closest_num]
+
+    # make directory for putting these aprticles in
+    os.mkdir(f"{output_dir}/particles")
+
+    # move the desired particles into the temporary directory
+    for particle in selection:
+        # this works on multiple operating systems, I hope
+        shutil.copy(
+            f"{particles_dir}/{particle[1]}", f"{output_dir}/particles/{particle[1]}"
+        )
+
+    # optionally i can plot this so the user can see the spread. or save that plot in
+    # the selection directory
+    if plot:
+        x = [x[2][0] for x in selection]
+        y = [x[2][1] for x in selection]
+
+        plt.figure(figsize=(6, 6))
+
+        plt.scatter(mantle_fracs, por_fracs, s=7, alpha=0.3)
+        plt.scatter(x, y, s=7)
+        plt.scatter(central_point[0], central_point[1], color="black", s=8)
+        plt.xlabel("%mantle ")
+        plt.ylabel("%porosity")
+        plt.ylim(-0.05, 1)
+        plt.xlim(-0.05, 1)
+        plt.xticks(np.arange(0.05, 1.01, 0.1), range(5, 96, 10))
+        plt.yticks(np.arange(0.05, 1.01, 0.1), range(5, 96, 10))
+        plt.title(
+            f"closest {closest_num} particles of mantle={central_point[0]:.3f} por={central_point[1]:.3f}"
+        )
+        plt.grid()
+        plt.savefig(f"{output_dir}/particles/plot")
+
+
 if __name__ == "__main__":
 
     # TODO add description and such
     parser = argparse.ArgumentParser()
-    # TODO this needs to be able to take a range, same as optool
-    # possibly easiest to do with interpreting the input as a string?
+
     parser.add_argument(
         "-l", "--wavelength", default="1", nargs="*", help="wavelength in micron"
     )
-    # mass fraction is required here for separating mantle and core.
     parser.add_argument(
         "-c",
         "--core",
@@ -135,7 +203,7 @@ if __name__ == "__main__":
         "-m",
         "--mantle",
         help="material(s) and mass fractions of the mantle.",
-        nargs="?",
+        nargs="*",
         default="h2o",
     )
     parser.add_argument(
@@ -146,7 +214,6 @@ if __name__ == "__main__":
         nargs="?",
         help="porosity volume fraction",
     )
-    # TODO size range as in optool
     parser.add_argument(
         "-a",
         "--size",
@@ -156,31 +223,35 @@ if __name__ == "__main__":
         nargs="?",
     )
     parser.add_argument("-o", "--output", help="output folder", default="output")
+    parser.add_argument(
+        "-n", "--number", help="number of GRF particles to use", default=3
+    )
 
     args = parser.parse_args()
 
-    # unpack
-    lam_range_micron = " ".join(
-        args.wavelength
-    )  # this needs to be a string with 1 or 3 arguments
-
-    # materials and mass fractions should be able to be parsed into optool for mixing as is
-    core_mat = args.core
+    # wavelength and materials should be a string to be run through optool
+    lam_range_micron = " ".join(args.wavelength)
+    if type(args.core) == list:  # only 1 material provided and no mass fraction
+        core_mat = " ".join(args.core)
+    else:
+        core_mat = args.core
 
     mantle_bool = bool(args.mantle)
-
     if mantle_bool:
-        mantle_mat = args.mantle
-    # for testing, keeping this in. the argument works but this is better for now
-    # mantle_mat = "h2o-w"
-
-    porosity = args.porosity
+        if type(args.mantle) == list:
+            mantle_mat = " ".join(args.mantle)
+        else:
+            mantle_mat = args.mantle
+    else:
+        mantle_mat = ""
+    v_frac_porosity_arg = args.porosity
     size_micron = args.size
     output_folder = "./" + args.output
 
+    n_part = int(args.number)
     size = size_micron * micron
 
-    print(f"cmat: {core_mat}, lambda: {lam_range_micron}, a: {size_micron}")
+    # print(f"cmat: {core_mat}, lambda: {lam_range_micron}, a: {size_micron}")
 
     # ------------------------------------------------------------------------------------- #
     # make output folder (idk if i want this or if i want it to save to the folder regardless of if its empty)
@@ -203,14 +274,44 @@ if __name__ == "__main__":
         os.mkdir(output_folder)
 
     # ------------------------------------------------------------------------------------- #
-    # find matching GRF particles TODO
+    # get n,k from optool
     # ------------------------------------------------------------------------------------- #
-    particles = os.listdir(particle_folder)
-    particles = [f"{particle_folder}/" + x for x in particles]
+
+    # optool calculates n and k seperately for my mantle and core
+
+    core_nk, lam_arr, rho_core = get_nk(lam_range_micron, core_mat, output_folder)
+    if mantle_bool:
+        mantle_nk, _, rho_mantle = get_nk(lam_range_micron, mantle_mat, output_folder)
+    lam_arr_micron = lam_arr / micron
+
+    # also get total rho from optool
+    _, _, rho_particle_arg = get_nk(
+        lam_range_micron, core_mat + " " + mantle_mat, output_folder
+    )
+
+    # ------------------------------------------------------------------------------------- #
+    # find matching GRF particles
+    # ------------------------------------------------------------------------------------- #
+    # calculate mantle volume fraction from densities
+    v_frac_mantle_arg = (rho_particle_arg - rho_core) / (rho_mantle - rho_core)
+    print(f"\nmantle volume fraction: {v_frac_mantle_arg:.3f}\n")
+
+    select_particles(
+        (v_frac_mantle_arg, v_frac_porosity_arg),
+        output_folder,
+        closest_num=n_part,
+        plot=True,
+    )
+
+    # list of relative path strings
+    # filter out any imagas for example
+    particles = Path(f"{output_folder}/particles/").rglob("*.geom")
+    particles = [str(x) for x in particles]  # these need to be strings
+
     # in [core, mantle] format. in #dipoles units
+    # if no mantle, just a list of core volumes
     particle_volumes_dip = []
-    # get the volumes. first line is general description and
-    # second (and third) line are volumes?
+    # get the volumes
     for particle in particles:
         file = open(particle, "r")
         line = file.readline()
@@ -225,23 +326,12 @@ if __name__ == "__main__":
         file.close()
 
         particle_volumes_dip.append(volumes_dipoles)
-    # ------------------------------------------------------------------------------------- #
-    # get n,k from optool
-    # ------------------------------------------------------------------------------------- #
 
-    # --> needs material and lambda
-    # --> gives arrays of n,k
-    # needs to run for both core and mantle
-    core_nk, lam_arr, rho_core = get_nk(lam_range_micron, core_mat)
-    if mantle_bool:
-        mantle_nk, _, rho_mantle = get_nk(lam_range_micron, mantle_mat)
-    lam_arr_micron = lam_arr / micron
-    print()
     # ------------------------------------------------------------------------------------- #
     # call adda
     # ------------------------------------------------------------------------------------- #
 
-    npart = len(particles)
+    n_part = n_part
     nlam = len(lam_arr)
 
     start_time = time.time()
@@ -250,6 +340,7 @@ if __name__ == "__main__":
     # we also need the volumes
     # for all realisations
     for ig, geom_file in enumerate(particles):
+
         current_folder = output_folder + f"/adda_runs_particle{ig}"
         os.mkdir(current_folder)
         # adda needs this file for orientational averaging
@@ -258,7 +349,7 @@ if __name__ == "__main__":
         # for wavelength grid, needs to run multiple times
         for i, lam in enumerate(lam_arr):
             # status update?
-            sys.stdout.write(f"\rparticle {ig+1:>3}/{npart}  lambda {i+1:>3}/{nlam}")
+            sys.stdout.write(f"\rparticle {ig+1:>3}/{n_part}  lambda {i+1:>3}/{nlam}")
             nc, kc = core_nk[i]
             if mantle_bool:
                 nm, km = mantle_nk[i]
@@ -288,19 +379,19 @@ if __name__ == "__main__":
 
     # do this for each realisation and average
 
-    particle_masses = np.zeros(npart)
-    particle_rhos = np.zeros(npart)
+    particle_masses = np.zeros(n_part)
+    particle_rhos = np.zeros(n_part)
     # we have a 4x4 matrix, for each wavelength, for each particle
-    matrices_RADMC_arr = np.zeros((npart, nlam, 181, 4, 4))
-    # matrices_unnorm_arr = np.zeros((npart, nlam, 181, 4, 4))  # just for testing
+    matrices_RADMC_arr = np.zeros((n_part, nlam, 181, 4, 4))
+    # matrices_unnorm_arr = np.zeros((n_part, nlam, 181, 4, 4))  # just for testing
 
     # for each lambda [Cext Qext Cabs Qabs], for each particle
     # so the order is arr[particle, lambda, C/Q]
-    C_and_Q_arr = np.zeros((npart, nlam, 4))
+    C_and_Q_arr = np.zeros((n_part, nlam, 4))
 
     # these are saved for the output writing
-    volumes_core_mantle = np.zeros((npart, 2))
-    for ig in range(npart):
+    volumes_core_mantle = np.zeros((n_part, 2))
+    for ig in range(n_part):
 
         adda_folders = os.listdir(f"{output_folder}/adda_runs_particle{ig}")
         adda_folders.sort()
@@ -414,7 +505,7 @@ if __name__ == "__main__":
 
     # matrix. gonna do this the slow way
     # first weigh by particle mass
-    for ip in range(npart):
+    for ip in range(n_part):
         matrices_RADMC_arr[ip] = matrices_RADMC_arr[ip] * particle_masses[ip]
     # sum for averaging and divide my total mass
     matrices_RADMC_averaged = np.sum(matrices_RADMC_arr, axis=0) / particle_masses.sum()
@@ -423,7 +514,7 @@ if __name__ == "__main__":
     volume_fracs = volumes_core_mantle[:, 1] / (
         volumes_core_mantle[:, 0] + volumes_core_mantle[:, 1]
     )
-    for ip in range(npart):
+    for ip in range(n_part):
         volume_fracs[ip] = volume_fracs[ip] * particle_masses[ip]
     volume_frac = volume_fracs.sum() / particle_masses.sum()
     mass_frac = (
