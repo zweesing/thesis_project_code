@@ -19,17 +19,31 @@ inputs:
         n rotations (for averaging)
 
 outputs:
-    all scattering quantities and scattering matrix in one file
+    all scattering quantities and scattering matrix in one file (results.dat)
+    DuCKLinG input q curve (ducky.dat)
 
 
 
+TODO functionality to add:
+mass fractions really need to be added in the output file. maybe make optool do very simple calc. to steal output file.
+    write descriptions for arguments
+    input files instead of arguments (list of nk instead of optool?)
+    input directory path to particles instead of selecting in code
+    make it a commandline tool with a setup.py etc
+    flag to select particles before doing any calculations
+        also requires renaming optool files so they can be read in again and are not overwritten
 
 TODO fixes still needed:
+    make -r and -w mutually exclusive
+
     think there should be more particles in that high mantle fraction range maybe.
+
     results.dat needs to show missing mass fractions or something. now its comfusing
+
     exit if optool does not understand the material input
-    write descriptions for arguments
+
     0 mantle particles must not get mantle particles
+
     update results.dat to show amount of particles used. possibly aslo a file with
         the actual average of the particles used, and how it compares to the requested parameters
 
@@ -51,25 +65,74 @@ micron = 1e-4
 particle_folder = "GRF_particles_all"
 
 
-def get_nk(wavelength, material, output_folder):
-    """get refractive index for specified material(s) from optool. Material can be
+def make_output_dir(output_dir):
+    """Create an output directory. use a numbered suffix if requested name is already in use.
+
+    Args:
+        output_dir (str): name of output directory
+
+    Returns:
+        str: name of output directory
+    """
+
+    # check if name already in use. Generate a new unique name
+    if os.path.isdir(output_dir):
+        nodir = True
+        counter = 1
+        new_dir = output_dir + f"{counter:03d}"
+
+        while nodir:
+            try:
+                os.mkdir(new_dir)
+                nodir = False
+                return new_dir
+
+            except FileExistsError:
+                counter += 1
+                new_dir = output_dir + f"{counter:03d}"
+    else:
+        os.mkdir(output_dir)
+        return output_dir
+
+
+def get_nk(wavelength, material, output_dir, suffix=""):
+    """Get refractive index for specified material(s) from optool. Material can be
     the entire string including the mass fractions, in which case optool will mix them.
+    Renames the optool_mix.lnk file and returns the full path to it.
 
     Args:
         wavelength (float or str): wavelength in micron. Can be a single value or a lmin lmax and number of points
         material (str): material name(s) or shorthand and mass fractions if multiple.
+        suffix (str): suffix for renaming optool output file. Defaults to an empty string.
 
     Returns:
-        2xN arr of n,k values, 1xN arr of wavelength grid, density of materials
+        path to lnk file
     """
     # TODO output folder needs to be a temp
     # possibly specify a single size so optool doesnt calculate a range (optimisation)
     # optool bug, does not write to correct folder
-    os.system(f"cd {output_folder} && optool -c {material} -l {wavelength} -mie -w -q")
+    os.system(f"cd {output_dir} && optool -c {material} -l {wavelength} -mie -w -q")
+    # rename file so it can be read again later
+    new_name = f"{output_dir}/optool_mix_{suffix}.lnk"
+    shutil.move(f"{output_dir}/optool_mix.lnk", new_name)
+    # remove other optool files
+    # os.remove(f"{output_dir}/optool_lam.dat")
+    os.remove(f"{output_dir}/optool_sd.dat")
 
+    return new_name
+
+
+def read_nk(path):
+    """Read in an optool generated lnk file.
+
+    Args:
+        path (str): path to lnk file
+
+    Returns:
+        2xN arr of nk values, 1xN arr of wavelength grid, density of (mixed) material(s)
+    """
     # read in data
-    # TODO i dont need all this information so this can be shorter I think
-    rfile = open(f"{output_folder}/optool_mix.lnk", "r")
+    rfile = open(path)
 
     dum = rfile.readline()
     header = ""
@@ -188,7 +251,17 @@ if __name__ == "__main__":
 
     # TODO add description and such
     parser = argparse.ArgumentParser()
-
+    parser.add_argument(
+        "-r",
+        "--read",
+        help="load a prepared directory instead of specifying parameters",
+    )
+    parser.add_argument(
+        "-w",
+        "--write",
+        action="store_true",
+        help="generate nk files and select particles but exit before doing any calculations. Use -r [DIR] to perform the calculations later.",
+    )
     parser.add_argument(
         "-l", "--wavelength", default="1", nargs="*", help="wavelength in micron"
     )
@@ -204,12 +277,12 @@ if __name__ == "__main__":
         "--mantle",
         help="material(s) and mass fractions of the mantle.",
         nargs="*",
-        default="h2o",
+        default=None,
     )
     parser.add_argument(
         "-p",
         "--porosity",
-        default=0,
+        default=0.2,
         type=float,
         nargs="?",
         help="porosity volume fraction",
@@ -229,83 +302,128 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # wavelength and materials should be a string to be run through optool
-    lam_range_micron = " ".join(args.wavelength)
-    if type(args.core) == list:  # only 1 material provided and no mass fraction
-        core_mat = " ".join(args.core)
-    else:
-        core_mat = args.core
+    write_bool = args.write
+    read_bool = bool(args.read)
 
-    mantle_bool = bool(args.mantle)
-    if mantle_bool:
-        if type(args.mantle) == list:
-            mantle_mat = " ".join(args.mantle)
+    if read_bool:
+        # read in parameters
+        output_dir = args.read
+        mantle_bool = False
+
+        try:
+            rf = open(output_dir + "/parameters.txt", "r")
+        except FileNotFoundError:
+            # TODO this should be a proper error or something
+            print("directory does not contain parameters.txt!")
+            sys.exit()
+
+        line = rf.readline()
+        while line:
+            if line.startswith("size"):
+                size_micron = float(line.split()[-1])
+            elif line.startswith("core"):
+                core_mat = " ".join(line.split()[1:])
+            elif line.startswith("mantle"):
+                mantle_mat = " ".join(line.split()[1:])
+                mantle_bool = True
+            line = rf.readline()
+        rf.close()
+
+    else:
+        # materials
+        # only 1 material provided and no mass fraction does not give list
+        if type(args.core) == list:
+            core_mat = " ".join(args.core)
         else:
-            mantle_mat = args.mantle
-    else:
-        mantle_mat = ""
-    v_frac_porosity_arg = args.porosity
-    size_micron = args.size
-    output_folder = "./" + args.output
+            core_mat = args.core
 
-    n_part = int(args.number)
+        mantle_bool = bool(args.mantle)
+        if mantle_bool:
+            if type(args.mantle) == list:
+                mantle_mat = " ".join(args.mantle)
+            else:
+                mantle_mat = args.mantle
+        else:
+            mantle_mat = ""
+
+        # other parameters
+        lam_range_micron = " ".join(args.wavelength)  # str for optool input
+        v_frac_porosity_arg = args.porosity
+        size_micron = args.size
+        output_dir = "./" + args.output
+        n_part = int(args.number)
+
     size = size_micron * micron
 
     # print(f"cmat: {core_mat}, lambda: {lam_range_micron}, a: {size_micron}")
 
     # ------------------------------------------------------------------------------------- #
-    # make output folder (idk if i want this or if i want it to save to the folder regardless of if its empty)
+    # make output folder
     # ------------------------------------------------------------------------------------- #
-    if os.path.isdir(output_folder):
-        nofolder = True
-        counter = 1
-        newfoldername = output_folder + f"{counter:03d}"
-
-        while nofolder:
-            try:
-                os.mkdir(newfoldername)
-                nofolder = False
-                output_folder = newfoldername
-
-            except FileExistsError:
-                counter += 1
-                newfoldername = output_folder + f"{counter:03d}"
-    else:
-        os.mkdir(output_folder)
+    if not read_bool:
+        output_dir = make_output_dir(output_dir)
 
     # ------------------------------------------------------------------------------------- #
     # get n,k from optool
     # ------------------------------------------------------------------------------------- #
 
     # optool calculates n and k seperately for my mantle and core
+    if read_bool:
+        nk_file = f"{output_dir}/optool_mix_core.lnk"
+    else:
+        nk_file = get_nk(lam_range_micron, core_mat, output_dir, "core")
+    core_nk, lam_arr, rho_core = read_nk(nk_file)
 
-    core_nk, lam_arr, rho_core = get_nk(lam_range_micron, core_mat, output_folder)
     if mantle_bool:
-        mantle_nk, _, rho_mantle = get_nk(lam_range_micron, mantle_mat, output_folder)
+        if read_bool:
+            nk_file = f"{output_dir}/optool_mix_mantle.lnk"
+        else:
+            nk_file = get_nk(lam_range_micron, mantle_mat, output_dir, "mantle")
+        mantle_nk, _, rho_mantle = read_nk(nk_file)
+
     lam_arr_micron = lam_arr / micron
 
-    # also get total rho from optool
-    _, _, rho_particle_arg = get_nk(
-        lam_range_micron, core_mat + " " + mantle_mat, output_folder
-    )
+    # also get total rho from optool for volume calc. optool_lam.dat is used so it works with -r
+    if mantle_bool:
+        nk_file = get_nk(
+            "optool_lam.dat", core_mat + " " + mantle_mat, output_dir, "particle"
+        )
+        _, _, rho_particle_arg = read_nk(nk_file)
 
     # ------------------------------------------------------------------------------------- #
     # find matching GRF particles
     # ------------------------------------------------------------------------------------- #
     # calculate mantle volume fraction from densities
-    v_frac_mantle_arg = (rho_particle_arg - rho_core) / (rho_mantle - rho_core)
-    print(f"\nmantle volume fraction: {v_frac_mantle_arg:.3f}\n")
+    if not read_bool:
+        if mantle_bool:
+            v_frac_mantle_arg = (rho_particle_arg - rho_core) / (rho_mantle - rho_core)
+        else:
+            v_frac_mantle_arg = 0
+        print(f"\nmantle volume fraction: {v_frac_mantle_arg:.3f}\n")
 
-    select_particles(
-        (v_frac_mantle_arg, v_frac_porosity_arg),
-        output_folder,
-        closest_num=n_part,
-        plot=True,
-    )
+        select_particles(
+            (v_frac_mantle_arg, v_frac_porosity_arg),
+            output_dir,
+            closest_num=n_part,
+            plot=False,
+        )
+
+    # ------------------------------------------------------------------------------------- #
+    # exit if --write
+
+    if write_bool:
+        with open(f"{output_dir}/parameters.txt", "w") as wf:
+            wf.write(f"size(um): {size_micron}\n")
+            wf.write(f"core: {core_mat}\n")
+            if mantle_bool:
+                wf.write(f"mantle: {mantle_mat}\n")
+
+        sys.exit()
+    # ------------------------------------------------------------------------------------- #
 
     # list of relative path strings
-    # filter out any imagas for example
-    particles = Path(f"{output_folder}/particles/").rglob("*.geom")
+    # filter out any images or notes
+    particles = Path(f"{output_dir}/particles/").rglob("*.geom")
     particles = [str(x) for x in particles]  # these need to be strings
 
     # in [core, mantle] format. in #dipoles units
@@ -331,7 +449,7 @@ if __name__ == "__main__":
     # call adda
     # ------------------------------------------------------------------------------------- #
 
-    n_part = n_part
+    n_part = len(particles)
     nlam = len(lam_arr)
 
     start_time = time.time()
@@ -341,7 +459,7 @@ if __name__ == "__main__":
     # for all realisations
     for ig, geom_file in enumerate(particles):
 
-        current_folder = output_folder + f"/adda_runs_particle{ig}"
+        current_folder = output_dir + f"/adda_runs_particle{ig}"
         os.mkdir(current_folder)
         # adda needs this file for orientational averaging
         # this might not work on windows?
@@ -393,12 +511,12 @@ if __name__ == "__main__":
     volumes_core_mantle = np.zeros((n_part, 2))
     for ig in range(n_part):
 
-        adda_folders = os.listdir(f"{output_folder}/adda_runs_particle{ig}")
+        adda_folders = os.listdir(f"{output_dir}/adda_runs_particle{ig}")
         adda_folders.sort()
 
         # calculate particle mass to convert to opacity
         # all dipoles are the same size (for one particle) so we only need to read it once
-        f = open(f"{output_folder}/adda_runs_particle{ig}/{adda_folders[0]}/log")
+        f = open(f"{output_dir}/adda_runs_particle{ig}/{adda_folders[0]}/log")
         line = f.readline()
         while not line.startswith("Dipole size"):
             line = f.readline()
@@ -436,7 +554,7 @@ if __name__ == "__main__":
         for il, a_folder in enumerate(adda_folders):
             try:
                 f = open(
-                    f"{output_folder}/adda_runs_particle{ig}/{a_folder}/CrossSec", "r"
+                    f"{output_dir}/adda_runs_particle{ig}/{a_folder}/CrossSec", "r"
                 )
 
                 lines = f.readlines()
@@ -451,7 +569,7 @@ if __name__ == "__main__":
                 C_and_Q_arr[ig, il, :] = np.array([np.nan, np.nan, np.nan, np.nan])
 
             # matrix
-            f = open(f"{output_folder}/adda_runs_particle{ig}/{a_folder}/mueller", "r")
+            f = open(f"{output_dir}/adda_runs_particle{ig}/{a_folder}/mueller", "r")
             f.readline()  # columnnames
             matrices = np.zeros((181, 4, 4))
             line = f.readline()
@@ -517,15 +635,18 @@ if __name__ == "__main__":
     for ip in range(n_part):
         volume_fracs[ip] = volume_fracs[ip] * particle_masses[ip]
     volume_frac = volume_fracs.sum() / particle_masses.sum()
-    mass_frac = (
-        rho_core
-        * (1 - volume_frac)
-        / (rho_core * (1 - volume_frac) + rho_mantle * (volume_frac))
-    )
+    if mantle_bool:
+        mass_frac = (
+            rho_core
+            * (1 - volume_frac)
+            / (rho_core * (1 - volume_frac) + rho_mantle * (volume_frac))
+        )
+    else:
+        mass_frac = 1
     # ------------------------------------------------------------------------------------- #
     # write output files
     # ------------------------------------------------------------------------------------- #
-    output_filename = output_folder + "/results.dat"
+    output_filename = output_dir + "/results.dat"
     wfile = open(output_filename, "w")
     # header
     wfile.write(
@@ -624,7 +745,7 @@ if __name__ == "__main__":
     print("written output file to", output_filename)
 
     # write Q file for duckling
-    outputduck_filename = output_folder + "/ducky.dat"
+    outputduck_filename = output_dir + "/ducky.dat"
 
     wfile = open(outputduck_filename, "w")
     # column names
