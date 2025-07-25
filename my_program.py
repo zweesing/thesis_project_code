@@ -33,6 +33,8 @@ TODO functionality to add:
 
     make it a commandline tool with a setup.py etc
 
+    proper errors and exceptions
+
 
 TODO fixes still needed:
 
@@ -103,20 +105,25 @@ def get_nk(wavelength, material, output_dir, suffix=""):
     Returns:
         path to lnk file
     """
-    # possibly specify a single size so optool doesnt calculate a range (optimisation)
-    # optool bug, does not write to correct folder so need to do it like this
-    result = os.system(f"optool -c {material} -l {wavelength} -w -q -o {output_dir}")
-    print("did it work:", result)
-    if result != 0:
-        sys.exit()
-    # rename file so it can be read again later
-    new_name = f"{output_dir}/optool_mix_{suffix}.lnk"
+    # optool -err frag outputs an exit code. linux returns a 16-bit number that does:
+    # "a 16-bit number, whose low byte is the signal number that killed the process,
+    # and whose high byte is the exit status (if the signal number is zero)"
+    # so I get the exit code of optool back with os.WEXITSTATUS
+    result = os.system(
+        f"optool -c {material} -l {wavelength} -a 0.1 -w -q -o {output_dir} -err > {output_dir}/optool_out.log 2>&1"
+    )
+    if os.WEXITSTATUS(result) != 0:
+        # reproduce the error without the backtrace
+        with open(f"{output_dir}/optool_out.log", "r") as f:
+            print(f.readlines()[-1])
 
-    # this part fails if optool did not run succesfully, so I can catch it here
-    try:
-        shutil.move(f"{output_dir}/optool_mix.lnk", new_name)
-    except FileNotFoundError:
-        sys.exit()
+        # probably better to raise my own error here. Optool error or adda error for example
+        sys.exit(1)
+
+    # rename file to differentiate core and mantle
+    new_name = f"{output_dir}/optool_mix_{suffix}.lnk"
+    shutil.move(f"{output_dir}/optool_mix.lnk", new_name)
+
     # remove other optool files
     os.remove(f"{output_dir}/optool_lam.dat")
     os.remove(f"{output_dir}/optool_sd.dat")
