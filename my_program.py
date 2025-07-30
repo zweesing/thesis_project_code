@@ -29,11 +29,13 @@ TODO functionality to add:
 
     write descriptions for arguments
 
-    input files instead of arguments (list of nk instead of optool)
+    input lnk files instead of arguments (list of nk instead of optool)
 
     make it a commandline tool with a setup.py etc
 
     proper errors and exceptions
+
+    delete optool files when I'm done, or have an option to keep them
 
 
 TODO fixes still needed:
@@ -41,6 +43,9 @@ TODO fixes still needed:
     think there should be more particles in that high mantle fraction range maybe.
 
     0 mantle particles must not get mantle particles
+
+    test missing adda output (maybe important for multicore). what happens then? it should skip that datapoint
+
 
 
 
@@ -360,6 +365,12 @@ if __name__ == "__main__":
         "-n", "--number", help="number of GRF particles to use", default=3
     )
     parser.add_argument("-mc", "--multicore", type=int, nargs="?", default=0)
+    parser.add_argument(
+        "-d",
+        "--duckling",
+        action="store_true",
+        help="Produce the duckling input file with Q curves",
+    )
 
     args = parser.parse_args()
 
@@ -452,6 +463,8 @@ if __name__ == "__main__":
     core_mat, mantle_mat, rho_particle_arg = get_material_mix(
         output_dir, core_mat, mantle_mat
     )
+    print("rho particle arg:", rho_particle_arg)
+    print("mantle mat:", mantle_mat)
 
     # ------------------------------------------------------------------------------------- #
     # find matching GRF particles
@@ -459,7 +472,20 @@ if __name__ == "__main__":
     # calculate mantle volume fraction from densities
     if not read_bool:
         if mantle_bool:
-            v_frac_mantle_arg = (rho_particle_arg - rho_core) / (rho_mantle - rho_core)
+            try:
+                # this works, except when the densities of the mantle and the core are the same.
+                v_frac_mantle_arg = (rho_particle_arg - rho_core) / (
+                    rho_mantle - rho_core
+                )
+            except ZeroDivisionError:
+                # if densities are the same, mass fraction = volume fraction
+                # we take this from the mantle_mat string that has alternating mass frac
+                v_frac_mantle_arg = sum(
+                    [
+                        float(mantle_mat.split()[x])
+                        for x in range(1, len(mantle_mat.split()), 2)
+                    ]
+                )
         else:
             v_frac_mantle_arg = 0
         print(f"\nmantle volume fraction: {v_frac_mantle_arg:.3f}\n")
@@ -551,7 +577,7 @@ if __name__ == "__main__":
                 # can change to "mpiexec -n {multicore} adda_mpi ..." if i want to sepcify the amount
                 # it defaults to all of them i think, however '6' does not work (and I have 8)
                 os.system(
-                    f"mpiexec adda_mpi -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder} > dump/adda_term_output{ig}_{i}.txt"
+                    f"mpiexec -n {multicore} adda_mpi -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder} > dump/adda_term_output{ig}_{i}.txt"
                 )
             else:
                 os.system(
@@ -671,6 +697,7 @@ if __name__ == "__main__":
             matrices_RADMC_arr[ig, il] = (
                 matrices * lam_arr[il] ** 2 / (4 * np.pi**2 * particle_mass)
             )
+    print("particle rho's:", particle_rhos)
 
     # ------------------------------------------------------------------------------------- #
     # average results, weighted by mass
@@ -708,7 +735,11 @@ if __name__ == "__main__":
     )
     for ip in range(n_part):
         volume_fracs[ip] = volume_fracs[ip] * particle_masses[ip]
+        particle_rhos[ip] = particle_rhos[ip] * particle_masses[ip]
     volume_frac = volume_fracs.sum() / particle_masses.sum()
+    particle_rho = particle_rhos.sum() / particle_masses.sum()
+    print("averaged rho:", particle_rho)
+    # mass
     if mantle_bool:
         mass_frac = (
             rho_core
@@ -717,6 +748,8 @@ if __name__ == "__main__":
         )
     else:
         mass_frac = 1
+    # density
+
     # ------------------------------------------------------------------------------------- #
     # write output files
     # ------------------------------------------------------------------------------------- #
@@ -829,7 +862,7 @@ if __name__ == "__main__":
     wfile = open(outputduck_filename, "w")
     # column names
     # TODO put average rho in there
-    wfile.write(f"{nlam} {size_micron} {particle_rhos[0]}\n")
+    wfile.write(f"{nlam} {size_micron} {particle_rho}\n")
     for i in range(nlam):
         # am now writing Qext
         wfile.write(f"{lam_arr_micron[i]:.15e} {results_arr[i][3]:.15e}\n")
