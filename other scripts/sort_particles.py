@@ -1,5 +1,8 @@
 """read in particles recursively from input_dir and sort them on porosity
-and mantle volume percentage in subdirectories in output_dir"""
+and mantle volume percentage in subdirectories in output_dir
+
+currently not used
+"""
 
 import os
 from pathlib import Path

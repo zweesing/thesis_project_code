@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+import argparse
 
 
 def read_in_file(file):
@@ -18,9 +19,8 @@ def read_in_file(file):
     # header
     while line.startswith("#"):
         line = file.readline()
-        if line.startswith("#   lmin"):
-            nlam = int(float(line.split()[-3]))
-            # nang = int(line.split()[-1])
+    nlam = int(float(line))
+    line = file.readline()
 
     # prepare arrays
     lam_arr = np.zeros(nlam)
@@ -40,12 +40,19 @@ def read_in_file(file):
 
 
 if __name__ == "__main__":
-    file = "runs/test_spectrum_big/results.dat"
+    parser = argparse.ArgumentParser(
+        description="plot the spectrum from a results.dat file."
+    )
+    parser.add_argument("file", type=str, help="path to results.dat")
+
+    args = parser.parse_args()
+    file = args.file
+
     lam, kext, kabs = read_in_file(file)
 
     plt.figure(figsize=(8, 6))
 
-    plt.title("1 GRF particle with pyr core and h2o-a mantle")
+    plt.title("spectrum (could show comp maybe)")
     plt.ylabel("kabs, kext, ksca")
     plt.xlabel(r"lambda [$\mu$m]")
 
@@ -58,6 +65,7 @@ if __name__ == "__main__":
 
     plt.xscale("log")
     plt.xlim(lam[0], lam[-1])
+    plt.yscale("log")
 
     plt.legend()
     plt.show()

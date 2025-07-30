@@ -1,6 +1,8 @@
 """
 file to read and plot cross section as a function of wavelength for both optool and adda, with conversions.
-runs optool first, generates
+runs optool first, generates nks and then puts it through adda.
+
+Precursor of the my_program.py script
 """
 
 import numpy as np

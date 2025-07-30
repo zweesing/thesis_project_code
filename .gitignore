@@ -3,8 +3,10 @@ runs/
 GRF_particles*/
 generating_particles/
 particle_dirs_wrong/
+particle things/
 dump/
-test_particles/
+test_*/
+convergence_tests/
 # any optool extentions
 *.dat
 *.lnk

@@ -9,7 +9,7 @@ def write_shape_file(filename, coordinates, Ndom=1, comments=""):
     # idk why im doing this so complicatedly
     nofile = True
     counter = 0
-    newfilename = filename
+    newfilename = filename + f"{counter:03d}"
 
     while nofile:
         try:
@@ -32,7 +32,7 @@ def write_shape_file(filename, coordinates, Ndom=1, comments=""):
             f"# Volume1 = {len(coordinates[0])}\n# Volume2 = {len(coordinates[1])}\n"
         )
         file.write(
-            f"# mantle volume frac. {len(coordinates[1])/(len(coordinates[1])+ len(coordinates[0]))} \n"
+            f"# mantle volume frac. {len(coordinates[1])/(len(coordinates[1])+ len(coordinates[0])):.3f} \n"
         )
         # if Ndom is more than one, coordinates should be one dimension higher
         file.write(f"Nmat={Ndom}\n")
@@ -105,11 +105,11 @@ def generate_coordinates(rad=8):
 
 
 if __name__ == "__main__":
-    shape_name = "small_coated_sphere"
-    for x in range(1, 9):
+    shape_name = "uncoated_sphere"
+    for x in range(1, 20):
         # rad is [full size, core size]
-        rad = [5 * x, 4 * x]
-        Ndom = 2
+        rad = x
+        Ndom = 1
         coordinates = generate_coordinates(rad)
         filename = write_shape_file(
             shape_name, coordinates, Ndom, comments=f"rad {rad}"

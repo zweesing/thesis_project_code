@@ -1,3 +1,5 @@
+"""sucky script to be able to run the GRF generation file in a loop with different parameters"""
+
 # import sys
 import os
 
