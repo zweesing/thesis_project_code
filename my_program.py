@@ -46,6 +46,8 @@ TODO fixes still needed:
 
     test missing adda output (maybe important for multicore). what happens then? it should skip that datapoint
 
+    if multicore fucks up, create near error message and exit (or let that one be skipped)
+
 
 
 
@@ -120,7 +122,7 @@ def get_nk(wavelength, material, output_dir, suffix=""):
     if os.WEXITSTATUS(result) != 0:
         # reproduce the error without the backtrace
         with open(f"{output_dir}/optool_out.log", "r") as f:
-            print(f.readlines()[-1])
+            sys.stderr.write(f.readlines()[-1])
 
         # probably better to raise my own error here. Optool error or adda error for example
         sys.exit(1)
@@ -380,7 +382,9 @@ if __name__ == "__main__":
     if read_bool:
         # read in parameters
         output_dir = args.read.strip("/")
+        # we do no mantle until proven otherwise
         mantle_bool = False
+        mantle_mat = ""
 
         try:
             rf = open(output_dir + "/parameters.txt", "r")
@@ -463,8 +467,6 @@ if __name__ == "__main__":
     core_mat, mantle_mat, rho_particle_arg = get_material_mix(
         output_dir, core_mat, mantle_mat
     )
-    print("rho particle arg:", rho_particle_arg)
-    print("mantle mat:", mantle_mat)
 
     # ------------------------------------------------------------------------------------- #
     # find matching GRF particles
@@ -488,7 +490,7 @@ if __name__ == "__main__":
                 )
         else:
             v_frac_mantle_arg = 0
-        print(f"\nmantle volume fraction: {v_frac_mantle_arg:.3f}\n")
+        sys.stdout.write(f"\nmantle volume fraction: {v_frac_mantle_arg:.3f}\n")
 
         select_particles(
             (v_frac_mantle_arg, v_frac_porosity_arg),
@@ -508,7 +510,7 @@ if __name__ == "__main__":
             if mantle_bool:
                 wf.write(f"mantle: {mantle_mat}\n")
                 wf.write(f"mantle volume fraction: {v_frac_mantle_arg}\n")
-        print(
+        sys.stdout.write(
             f"written nk and particle files to ./{output_dir}/. Perform calculations with '-r {output_dir}'"
         )
         sys.exit()
@@ -519,6 +521,9 @@ if __name__ == "__main__":
     particles = Path(f"{output_dir}/particles/").rglob("*.geom")
     particles = [str(x) for x in particles]  # these need to be strings
 
+    # actual average porosity
+    porosity_fracs = []
+
     # in [core, mantle] format. in #dipoles units
     # if no mantle, just a list of core volumes
     particle_volumes_dip = []
@@ -528,16 +533,32 @@ if __name__ == "__main__":
         line = file.readline()
         # comments
         volumes_dipoles = []
-        line = file.readline()
-        while line.startswith("# Volume"):
 
-            dipoles = int(line.split()[-1])
-            volumes_dipoles.append(dipoles)
+        while line.startswith("#"):
+            if line.startswith("# Volume"):
+                dipoles = int(line.split()[-1])
+                volumes_dipoles.append(dipoles)
+            if line.startswith("# porosity_frac"):
+                por = float(line.split()[-1])
+                porosity_fracs.append(por)
             line = file.readline()
         file.close()
 
         particle_volumes_dip.append(volumes_dipoles)
 
+    # calculate porosity
+    if (
+        not porosity_fracs
+    ):  # the spheres test cases do not contain a porosity info line so this would remain empty
+        porosity = 0
+    elif len(porosity_fracs) != len(particles):
+        sys.stdout.write(
+            "WARNING: you may be mixing spherical test particles and GRF! check the particles directory"
+        )
+    else:
+        # TODO this is not weighted average. not super important
+        # print(f"por fracs:{porosity_fracs}")
+        porosity_avg = sum(porosity_fracs) / len(porosity_fracs)
     # ------------------------------------------------------------------------------------- #
     # call adda
     # ------------------------------------------------------------------------------------- #
@@ -583,11 +604,10 @@ if __name__ == "__main__":
                 os.system(
                     f"adda -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder} > dump/adda_term_output{ig}_{i}.txt"
                 )
-    print()
-    time_passed = time.time() - start_time
 
-    sys.stdout.write(f"ADDA took {datetime.timedelta(seconds =time_passed )}")
-    print()
+            time_passed = time.time() - start_time
+
+    sys.stdout.write(f"\nADDA took {datetime.timedelta(seconds =time_passed )}\n\n")
 
     # ------------------------------------------------------------------------------------- #
     # read in dipole size to calculate mass
@@ -697,7 +717,6 @@ if __name__ == "__main__":
             matrices_RADMC_arr[ig, il] = (
                 matrices * lam_arr[il] ** 2 / (4 * np.pi**2 * particle_mass)
             )
-    print("particle rho's:", particle_rhos)
 
     # ------------------------------------------------------------------------------------- #
     # average results, weighted by mass
@@ -738,7 +757,7 @@ if __name__ == "__main__":
         particle_rhos[ip] = particle_rhos[ip] * particle_masses[ip]
     volume_frac = volume_fracs.sum() / particle_masses.sum()
     particle_rho = particle_rhos.sum() / particle_masses.sum()
-    print("averaged rho:", particle_rho)
+
     # mass
     if mantle_bool:
         mass_frac = (
@@ -766,9 +785,8 @@ if __name__ == "__main__":
     wfile.write(
         f"#   lmin [um]= {lam_arr_micron[0]:10.3f} lmax [um]= {lam_arr_micron[-1]:10.3f}  nlam = {nlam:4.3g}     nang=   181\n"
     )
-    # TODO comute actual porosity
     wfile.write(
-        f"#   porosity =      {args.porosity:5.3f}    a [um]= {size_micron:10.3f}  npart= {n_part:4.3g}\n"
+        f"#   porosity =      {porosity_avg:5.3f}    a [um]= {size_micron:10.3f}  npart= {n_part:4.3g}\n"
     )
 
     # composition
