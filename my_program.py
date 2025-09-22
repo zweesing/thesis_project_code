@@ -511,7 +511,7 @@ if __name__ == "__main__":
                 wf.write(f"mantle: {mantle_mat}\n")
                 wf.write(f"mantle volume fraction: {v_frac_mantle_arg}\n")
         sys.stdout.write(
-            f"written nk and particle files to ./{output_dir}/. Perform calculations with '-r {output_dir}'"
+            f"written nk and particle files to ./{output_dir}/. Perform calculations with '-r {output_dir}'\n"
         )
         sys.exit()
     # ------------------------------------------------------------------------------------- #
@@ -551,6 +551,7 @@ if __name__ == "__main__":
         not porosity_fracs
     ):  # the spheres test cases do not contain a porosity info line so this would remain empty
         porosity = 0
+        porosity_avg = 0
     elif len(porosity_fracs) != len(particles):
         sys.stdout.write(
             "WARNING: you may be mixing spherical test particles and GRF! check the particles directory"
@@ -559,6 +560,7 @@ if __name__ == "__main__":
         # TODO this is not weighted average. not super important
         # print(f"por fracs:{porosity_fracs}")
         porosity_avg = sum(porosity_fracs) / len(porosity_fracs)
+
     # ------------------------------------------------------------------------------------- #
     # call adda
     # ------------------------------------------------------------------------------------- #
