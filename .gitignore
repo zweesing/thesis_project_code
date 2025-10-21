@@ -18,7 +18,7 @@ convergence_test.py
 *.lnk
 *.inp
 # adda extensions
-*.geom
+# *.geom
 # images
 *.png
 
