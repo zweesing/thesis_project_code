@@ -37,16 +37,16 @@ TODO functionality to add:
 
     delete optool files when I'm done, or have an option to keep them
 
+    units in output file
+
 
 TODO fixes still needed:
 
     think there should be more particles in that high mantle fraction range maybe.
 
-    0 mantle particles must not get mantle particles
-
     test missing adda output (maybe important for multicore). what happens then? it should skip that datapoint
 
-    if multicore fucks up, create near error message and exit (or let that one be skipped)
+    if multicore fucks up, create neat error message and exit (or let that one be skipped)
 
 
 
@@ -67,6 +67,7 @@ import shutil
 # if a value in in something other than CGS, multiply it by the conversion
 micron = 1e-4
 particle_folder = "GRF_particles_all"
+spheres_folder = "spherical_particles_all"
 
 
 def make_output_dir(output_dir):
@@ -186,8 +187,22 @@ def read_nk(path):
 
 
 def select_particles(
-    central_point, output_dir, closest_num, particles_dir=particle_folder, plot=False
+    mantle, porosity, output_dir, closest_num, particles_dir=particle_folder, plot=False
 ):
+    """select particles for a given mantle and porosity volume fraction. First, all particles from particles_dir are read,
+    saving the mantle and porosity 'coordinates'. Then the distance is calculated between the requested coordinate
+    and the particles, and closest_num amount of particles are selected starting at the shortest distance.
+    To see which particles are selected in a way that makes these coordinates intuitive, you can get a plot with the
+    --plot option.
+
+    Args:
+        central_point (arr or tuple): mantle and porosity volume fraction, in that order
+        output_dir (str): current output directory
+        closest_num (int): amount of particles to select
+        particles_dir (str, optional): directory the particles are selected from. Defaults to particle_folder.
+        plot (bool, optional): save a plot of the location of the selected particles in the porosity and mantle volume fraction 'space'. Defaults to False.
+    """
+
     mantle_frac_list = []
     por_frac_list = []
     name_list = []
@@ -217,14 +232,19 @@ def select_particles(
     mantle_fracs = np.array(mantle_frac_list)
     por_fracs = np.array(por_frac_list)
     coordinates = np.stack((mantle_fracs, por_fracs), axis=-1)
-    distances_vec = coordinates - central_point
+    distances_vec = coordinates - (mantle, porosity)
     distances = np.linalg.norm(distances_vec, axis=1)
 
     # create (distance, name) tuples for sorting.
     dist_name_tups = []
     for i in range(len(distances)):
         # also add coordinates for plotting (can be removed if i want)
-        dist_name_tups.append((distances[i], name_list[i], coordinates[i]))
+        # if mantle volume fraction is zero, only 0 mantle particles should be considered
+        if mantle == 0:
+            if mantle_fracs[i] == 0:
+                dist_name_tups.append((distances[i], name_list[i], coordinates[i]))
+        else:
+            dist_name_tups.append((distances[i], name_list[i], coordinates[i]))
 
     # select closes num
     selection = sorted(dist_name_tups)[:closest_num]
@@ -247,9 +267,9 @@ def select_particles(
 
         plt.figure(figsize=(6, 6))
 
-        plt.scatter(mantle_fracs, por_fracs, s=7, alpha=0.3)
-        plt.scatter(x, y, s=7)
-        plt.scatter(central_point[0], central_point[1], color="black", s=8)
+        plt.scatter(mantle_fracs, por_fracs, s=7, alpha=0.2)
+        plt.scatter(x, y, s=7, color="red")
+        plt.scatter(mantle, porosity, color="black", s=8)
         plt.xlabel("%mantle ")
         plt.ylabel("%porosity")
         plt.ylim(-0.05, 1)
@@ -257,10 +277,42 @@ def select_particles(
         plt.xticks(np.arange(0, 1.05, 0.1), range(0, 101, 10))
         plt.yticks(np.arange(0, 1.05, 0.1), range(0, 101, 10))
         plt.title(
-            f"closest {closest_num} particles of mantle={central_point[0]:.3f} por={central_point[1]:.3f}"
+            f"closest {closest_num} particles of mantle={mantle:.3f} por={porosity:.3f}"
         )
         plt.grid()
         plt.savefig(f"{output_dir}/particles/plot")
+
+
+def select_spheres(mantle_volume_frac_arg, output_dir, particles_dir=spheres_folder):
+
+    smallest_difference = 1
+
+    for sphere_file in Path(particles_dir).rglob("*.geom"):
+        rf = open(sphere_file)
+        # read in relevant header data
+        mantle_frac = 0  # in case theres no mantle
+        line = rf.readline()
+        while line.startswith("#"):
+            if line.startswith("# mantle"):
+                mantle_frac = float(line.split()[-1])
+            line = rf.readline()
+        rf.close()
+
+        # find the closest match to the argument volume frac
+        difference = abs(mantle_volume_frac_arg - mantle_frac)
+        if difference < smallest_difference:
+            # select the right particle
+            target_part = sphere_file
+            smallest_difference = difference
+            using_frac = mantle_frac
+
+    particle = str(target_part).split("/")[-1]
+    sys.stdout.write(
+        f"The spheres have less freedom in mantle fraction. Using a sphere with mantle volume fraction {using_frac}\nResults file will show corrected mass fraction\n\n"
+    )
+    # Copy this particle into the directory
+    os.mkdir(f"{output_dir}/particles")
+    shutil.copy(f"{spheres_folder}/{particle}", f"{output_dir}/particles/{particle}")
 
 
 def get_material_mix(output_dir, core, mantle):
@@ -274,11 +326,12 @@ def get_material_mix(output_dir, core, mantle):
     Returns:
         str, str, float: corrected and normalised core and mantle strings, particle density
     """
+
     # run optool with one wavelength and one size to extract the full mix
     if mantle:
-        os.system(f"cd {output_dir} && optool -c {core} -m {mantle} -l 1 -a 1 -mie -q")
+        os.system(f"optool -o {output_dir} -c {core} -m {mantle} -l 1 -a 1 -mie -q")
     else:
-        os.system(f"cd {output_dir} && optool -c {core} -l 1 -a 1 -mie -q")
+        os.system(f"optool -o {output_dir} -c {core} -l 1 -a 1 -mie -q")
 
     with open(output_dir + "/dustkappa.dat", "r") as rf:
         l = rf.readline()
@@ -308,6 +361,75 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Calculate optical properties of dust particles using the DDA method on GRF particles."
     )
+
+    parser.add_argument(
+        "-l",
+        "--wavelength",
+        default="1",
+        nargs="*",
+        help="wavelength grid in micron.",
+    )
+
+    # particle properties
+    parser.add_argument(
+        "-c",
+        "--core",
+        help="material(s) and mass fractions of the core",
+        nargs="*",
+        default="pyr-mg70 0.87 c 0.13",
+    )
+    parser.add_argument(
+        "-m",
+        "--mantle",
+        help="material(s) and mass fractions of the mantle. Core and mantle mass fractions are renormalised together.",
+        nargs="*",
+        default=None,
+    )
+    parser.add_argument(
+        "-a",
+        "--size",
+        help="size of the particle in micron",
+        default=0.1,
+        type=float,
+        nargs="?",
+    )
+    parser.add_argument(
+        "-p",
+        "--porosity",
+        default=0.2,
+        type=float,
+        nargs="?",
+        help="porosity volume fraction of the particle",
+    )
+    parser.add_argument(
+        "-n", "--number", help="number of GRF particles to use", default=3
+    )
+
+    parser.add_argument(
+        "-o", "--output", help="output folder. Defaults to ./output/", default="output"
+    )
+
+    parser.add_argument(
+        "-mc",
+        "--multicore",
+        type=int,
+        nargs="?",
+        default=0,
+        help="Optional, use the mpi version of ADDA by specifying the number of cores to allocate. 0 (default) uses the normal version.",
+    )
+    parser.add_argument(
+        "-d",
+        "--duckling",
+        action="store_true",
+        help="Produce the duckling input file with Q curves",
+    )
+
+    parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Include the distribution of the particles on a porosity vfrac/mantle vfrac plot. Plot will be saved in [OUTPUT_DIR]/particles/plot.png.",
+    )
+
     rw_group = parser.add_mutually_exclusive_group()
     rw_group.add_argument(
         "-r",
@@ -320,58 +442,12 @@ if __name__ == "__main__":
         action="store_true",
         help="generate nk files and select particles but exit before doing any calculations. Use -r [DIR] to perform the calculations later.",
     )
+
     parser.add_argument(
-        "--plot",
+        "-s",
+        "--sphere",
         action="store_true",
-        help="Include the distribution of the particles on a porosity vfrac/mantle vfrac plot. Plot will be saved in [DIR]/particles/.",
-    )
-    parser.add_argument(
-        "-l",
-        "--wavelength",
-        default="1",
-        nargs="*",
-        help="wavelength in micron. Can be a single value [WAVELENGTH], [START STOP NLAM] to indicate a range with NLAM logarithmically spaced values, or a ",
-    )
-    parser.add_argument(
-        "-c",
-        "--core",
-        help="material(s) and mass fractions of the core. Core and mantle mass fractions are renormalised together.",
-        nargs="*",
-        default="pyr-mg70 0.87 c 0.13",
-    )
-    parser.add_argument(
-        "-m",
-        "--mantle",
-        help="material(s) and mass fractions of the mantle.",
-        nargs="*",
-        default=None,
-    )
-    parser.add_argument(
-        "-p",
-        "--porosity",
-        default=0.2,
-        type=float,
-        nargs="?",
-        help="porosity volume fraction of the particle.",
-    )
-    parser.add_argument(
-        "-a",
-        "--size",
-        help="size of the particle in micron.",
-        default=0.1,
-        type=float,
-        nargs="?",
-    )
-    parser.add_argument("-o", "--output", help="output folder", default="output")
-    parser.add_argument(
-        "-n", "--number", help="number of GRF particles to use", default=3
-    )
-    parser.add_argument("-mc", "--multicore", type=int, nargs="?", default=0)
-    parser.add_argument(
-        "-d",
-        "--duckling",
-        action="store_true",
-        help="Produce the duckling input file with Q curves",
+        help="calculate on a sphere instead of GRF particles. Cannot be porous.",
     )
 
     args = parser.parse_args()
@@ -385,6 +461,10 @@ if __name__ == "__main__":
         # we do no mantle until proven otherwise
         mantle_bool = False
         mantle_mat = ""
+        # same for multicore, ducky and sphere
+        duckling = False
+        multicore = False
+        sphere_bool = False
 
         try:
             rf = open(output_dir + "/parameters.txt", "r")
@@ -405,6 +485,10 @@ if __name__ == "__main__":
             elif line.startswith("multicore"):
                 multicore = int(line.split()[-1])
             line = rf.readline()
+            if line.startswith("duckling"):
+                duckling = True
+            if line.startswith("sphere"):
+                sphere_bool = True
 
         rf.close()
 
@@ -425,14 +509,28 @@ if __name__ == "__main__":
         else:
             mantle_mat = ""
 
-        # other parameters
+        # same for wavelength, if its a file or single wavelength
+        if type(args.wavelength) == list:
+            lam_range_micron = " ".join(args.wavelength)
+        else:
+            lam_range_micron = args.wavelength
         lam_range_micron = " ".join(args.wavelength)  # str for optool input
-        v_frac_porosity_arg = args.porosity
+
+        # other parameters
         size_micron = args.size
         output_dir = args.output.strip("/")
-        n_part = int(args.number)
         plot_distr_bool = args.plot
         multicore = args.multicore
+        duckling = args.duckling
+        # the sphere will not be porous and will only use one particle
+        sphere_bool = args.sphere
+        if sphere_bool:
+            sys.stdout.write("Using test case sphere. Porosity set to 0.\n")
+            n_part = 1
+            v_frac_porosity_arg = 0
+        else:
+            v_frac_porosity_arg = args.porosity
+            n_part = int(args.number)
 
     size = size_micron * micron
 
@@ -492,12 +590,16 @@ if __name__ == "__main__":
             v_frac_mantle_arg = 0
         sys.stdout.write(f"\nmantle volume fraction: {v_frac_mantle_arg:.3f}\n")
 
-        select_particles(
-            (v_frac_mantle_arg, v_frac_porosity_arg),
-            output_dir,
-            closest_num=n_part,
-            plot=plot_distr_bool,
-        )
+        if sphere_bool:
+            select_spheres(v_frac_mantle_arg, output_dir)
+        else:
+            select_particles(
+                v_frac_mantle_arg,
+                v_frac_porosity_arg,
+                output_dir,
+                closest_num=n_part,
+                plot=plot_distr_bool,
+            )
 
     # ------------------------------------------------------------------------------------- #
     # exit if --write
@@ -505,13 +607,17 @@ if __name__ == "__main__":
         with open(f"{output_dir}/parameters.txt", "w") as wf:
             wf.write(f"size(um): {size_micron}\n")
             wf.write(f"core: {core_mat}\n")
-            if multicore:
-                wf.write(f"multicore: {multicore}\n")
             if mantle_bool:
                 wf.write(f"mantle: {mantle_mat}\n")
                 wf.write(f"mantle volume fraction: {v_frac_mantle_arg}\n")
+            if multicore:
+                wf.write(f"multicore: {multicore}\n")
+            if duckling:
+                wf.write("duckling\n")
+            if sphere_bool:
+                wf.write("sphere\n")
         sys.stdout.write(
-            f"written nk and particle files to ./{output_dir}/. Perform calculations with '-r {output_dir}'\n"
+            f"written parameter, nk and particle files to ./{output_dir}/. Perform calculations with '-r {output_dir}'\n"
         )
         sys.exit()
     # ------------------------------------------------------------------------------------- #
@@ -785,10 +891,14 @@ if __name__ == "__main__":
 
     wfile.write("# Parameters:\n")
     wfile.write(
-        f"#   lmin [um]= {lam_arr_micron[0]:10.3f} lmax [um]= {lam_arr_micron[-1]:10.3f}  nlam = {nlam:4.3g}     nang=   181\n"
+        f"#   lmin [um]= {lam_arr_micron[0]:10.3f} lmax [um]= {lam_arr_micron[-1]:10.3f}  nlam = {nlam:4.3g}     nang = {181:7}\n"
     )
+    if sphere_bool:
+        shape = "sphere"
+    else:
+        shape = "GRF"
     wfile.write(
-        f"#   porosity =      {porosity_avg:5.3f}    a [um]= {size_micron:10.3f}  npart= {n_part:4.3g}\n"
+        f"#   porosity = {porosity_avg:10.3f}    a [um]= {size_micron:10.3f}  npart= {n_part:4.3g}     shape= {shape:>7}\n"
     )
 
     # composition
@@ -877,14 +987,15 @@ if __name__ == "__main__":
     sys.stdout.write(f"written output file to {output_filename}\n")
 
     # write Q file for duckling
-    outputduck_filename = output_dir + "/ducky.dat"
+    if duckling:
+        outputduck_filename = output_dir + "/ducky.dat"
 
-    wfile = open(outputduck_filename, "w")
-    # column names
-    # TODO put average rho in there
-    wfile.write(f"{nlam} {size_micron} {particle_rho}\n")
-    for i in range(nlam):
-        # am now writing Qext
-        wfile.write(f"{lam_arr_micron[i]:.15e} {results_arr[i][3]:.15e}\n")
+        wfile = open(outputduck_filename, "w")
+        # column names
+        # TODO put average rho in there
+        wfile.write(f"{nlam} {size_micron} {particle_rho}\n")
+        for i in range(nlam):
+            # am now writing Qext
+            wfile.write(f"{lam_arr_micron[i]:.15e} {results_arr[i][3]:.15e}\n")
 
-    wfile.close()
+        wfile.close()
