@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     plt.figure(figsize=(8, 6))
 
-    plt.title("spectrum (could show comp maybe)")
+    plt.title("spectrum")
     plt.ylabel("kabs, kext, ksca")
     plt.xlabel(r"lambda [$\mu$m]")
 

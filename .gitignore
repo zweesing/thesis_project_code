@@ -1,12 +1,18 @@
 # folders
 runs/
-GRF_particles*/
+
 generating_particles/
 particle_dirs_wrong/
 particle things/
 dump/
 test_*/
 convergence_tests/
+other_scripts/
+
+# files
+testing.ipynb
+convergence_test.py
+
 # any optool extentions
 *.dat
 *.lnk
