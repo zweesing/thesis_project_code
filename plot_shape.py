@@ -1,3 +1,5 @@
+"plot a particle (whole) or slice by slice"
+
 import matplotlib.pyplot as plt
 import argparse
 import numpy as np
@@ -96,7 +98,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("shapefile", help="shapefile to plot")
     parser.add_argument(
-        "-m", "--mode", help="single slice or full particle", default="full"
+        "-m",
+        "--mode",
+        help="plot slices or full particle ('slice' for slices, otherwise full particle)",
+        default="full",
     )
     args = parser.parse_args()
     if "slice" in args.mode:
