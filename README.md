@@ -3,6 +3,8 @@
 Program uses ADDA and Optool to calculate opacities for Gaussian random field (GRF) particles.
 A manual will be written later, this is basic usage for now.
 
+it is easiest to run the program from this directory, as it uses avg_params.dat and the particle directories. The relative path to the particle directories can also be changed at the top of my_program.py, if you do want to move things.
+
 to use, run `python3 my_program.py` with arguments.
 
 command line options can be shown with -h or --help.
