@@ -66,8 +66,8 @@ import shutil
 
 # if a value in in something other than CGS, multiply it by the conversion
 micron = 1e-4
-particle_folder = "GRF_particles_all"
-spheres_folder = "spherical_particles_all"
+particle_folder = "GRF_particles"
+spheres_folder = "spherical_particles"
 
 
 def make_output_dir(output_dir):
