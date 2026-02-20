@@ -674,6 +674,9 @@ if __name__ == "__main__":
     n_part = len(particles)
     nlam = len(lam_arr)
 
+    # make dir for dumping the adda log
+    os.mkdir(f"{output_dir}/adda_logs")
+
     start_time = time.time()
 
     # run per wavelength for whole particle. if multiple realisations, run for those
@@ -706,11 +709,11 @@ if __name__ == "__main__":
                 # can change to "mpiexec -n {multicore} adda_mpi ..." if i want to sepcify the amount
                 # it defaults to all of them i think, however '6' does not work (and I have 8)
                 os.system(
-                    f"mpiexec -n {multicore} adda_mpi -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder} > dump/adda_term_output{ig}_{i}.txt"
+                    f"mpiexec -n {multicore} adda_mpi -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder} > {output_dir}/adda_logs/adda_term_output{ig}_{i}.txt"
                 )
             else:
                 os.system(
-                    f"adda -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder} > dump/adda_term_output{ig}_{i}.txt"
+                    f"adda -shape read {geom_file} -eq_rad {a_micron} -lambda {lam_micron} -m {nc} {kc} {nm} {km} -orient avg -dir {run_folder} > {output_dir}/adda_logs/adda_term_output{ig}_{i}.txt"
                 )
 
             time_passed = time.time() - start_time
