@@ -9,16 +9,16 @@ The other requirements are Numpy and matplotlib, which can be installed with `pi
 
 it is easiest to clone this directory and run the program from here, as it uses avg_params.dat and the particle directories. The relative path to the particle directories can also be changed at the top of my_program.py, if you do want to move things around. avg_params.dat needs to be in the same directory as the script.
 
-to use, run `python3 my_program.py` with arguments.
+to use, run `python3 potatos.py` with arguments.
 
 ### example usage:
 show all options
 
-`python3 my_program.py -h`
+`python3 potatos.py -h`
 
 A 0.1 micron grain made of pyroxene and carbon in a mass ratio of 0.7/0.3, averaging over 2 particles. The wavelength range is 1 to 25 micron (100 points).
 
-`python3 my_program.py -a 0.1 -l 1 25 100 -c pyr 0.7 c 0.3 -n 2`
+`python3 potatos.py -a 0.1 -l 1 25 100 -c pyr 0.7 c 0.3 -n 2`
 
 for a list of possible materials and their abbreviations, see the optool UserGuide https://github.com/cdominik/optool/blob/master/UserGuide.org. 
 
