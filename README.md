@@ -11,9 +11,11 @@ to use, run `python3 my_program.py` with arguments.
 
 ### example usage:
 show all options
+
 `python3 my_program.py -h`
 
 A 0.1 micron grain made of pyroxene and carbon in a mass ratio of 0.7/0.3, averaging over 2 particles. The wavelength range is 1 to 25 micron (100 points).
+
 `python3 my_program.py -a 0.1 -l 1 25 100 -c pyr 0.7 c 0.3 -n 2`
 
 for a list of possible materials and their abbreviations, see the optool UserGuide https://github.com/cdominik/optool/blob/master/UserGuide.org. 
