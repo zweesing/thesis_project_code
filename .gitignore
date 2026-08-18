@@ -8,6 +8,9 @@ dump/
 test_*/
 convergence_tests/
 other_scripts/
+cryst_fine_grid/
+mix_with_ice_mantle/
+silicate_carbon_mix_porosity/
 
 # files
 testing.ipynb
