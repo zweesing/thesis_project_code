@@ -3,9 +3,11 @@
 
 This program uses ADDA (https://github.com/adda-team/adda) and Optool (https://github.com/cdominik/optool) to calculate opacities for Gaussian random field (GRF) particles. No input files are required, it can function fully from the command line.
 
+## Requirements
+To run POTATOS, both Optool and ADDA need to be on your path. 
+The other requirements are Numpy and matplotlib, which can be installed with `pip install -r requirements.txt`
 
-
-it is easiest to run the program from this directory, as it uses avg_params.dat and the particle directories. The relative path to the particle directories can also be changed at the top of my_program.py, if you do want to move things. avg_params.dat needs to be in the same directory as the script.
+it is easiest to clone this directory and run the program from here, as it uses avg_params.dat and the particle directories. The relative path to the particle directories can also be changed at the top of my_program.py, if you do want to move things around. avg_params.dat needs to be in the same directory as the script.
 
 to use, run `python3 my_program.py` with arguments.
 
